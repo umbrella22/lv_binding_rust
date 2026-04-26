@@ -17,10 +17,15 @@ const LIB_PREFIX: &str = "lv_";
 lazy_static! {
     static ref TYPE_MAPPINGS: HashMap<&'static str, &'static str> = [
         ("u16", "u16"),
+        ("u32", "u32"),
         ("i32", "i32"),
+        ("i16", "i16"),
+        ("i8", "i8"),
         ("u8", "u8"),
         ("bool", "bool"),
-        ("* const cty :: c_char", "_"),
+        ("size_t", "usize"),
+        ("* const cty :: c_char", "*const cty::c_char"),
+        ("* mut cty :: c_char", "*mut cty::c_char"),
     ]
     .iter()
     .cloned()
@@ -92,14 +97,18 @@ impl LvFunc {
         }
         false
     }
+
+    fn method_name(&self, parent: &LvWidget) -> String {
+        let templ = format!("{}{}_", LIB_PREFIX, parent.name.as_str());
+        self.name.replace(templ.as_str(), "")
+    }
 }
 
 impl Rusty for LvFunc {
     type Parent = LvWidget;
 
     fn code(&self, parent: &Self::Parent) -> WrapperResult<TokenStream> {
-        let templ = format!("{}{}_", LIB_PREFIX, parent.name.as_str());
-        let new_name = self.name.replace(templ.as_str(), "");
+        let new_name = self.method_name(parent);
         let func_name = format_ident!("{}", new_name);
         let original_func_name = format_ident!("{}", self.name.as_str());
 
@@ -134,19 +143,7 @@ impl Rusty for LvFunc {
             // function returns void
             None => quote!(()),
             // function returns something
-            _ => {
-                let return_value: &LvType = self.ret.as_ref().unwrap();
-                match return_value.literal_name.as_str() {
-                    "bool" => quote!(bool),
-                    "u32" => quote!(u32),
-                    "i32" => quote!(i32),
-                    "u16" => quote!(u16),
-                    "i16" => quote!(i16),
-                    "u8" => quote!(u8),
-                    "i8" => quote!(i8),
-                    _ => return Err(WrapperError::Skip)
-                }
-            }
+            _ => self.ret.as_ref().unwrap().return_code()?,
         };
 
         // Make sure all arguments can be generated, skip the first arg (self)!
@@ -374,7 +371,52 @@ impl LvType {
     }
 
     pub fn is_str(&self) -> bool {
-        self.literal_name.ends_with("* const cty :: c_char")
+        self.literal_name.trim() == "* const cty :: c_char"
+    }
+
+    fn pointer_target(&self) -> Option<&str> {
+        self.literal_name
+            .strip_prefix("* const ")
+            .or_else(|| self.literal_name.strip_prefix("* mut "))
+            .map(str::trim)
+    }
+
+    fn lvgl_ident(&self) -> Option<Ident> {
+        if self.literal_name.starts_with("lv_") {
+            Some(format_ident!("{}", self.literal_name))
+        } else {
+            self.pointer_target().and_then(|target| {
+                if target.starts_with("lv_") {
+                    Some(format_ident!("{}", target))
+                } else {
+                    None
+                }
+            })
+        }
+    }
+
+    fn return_code(&self) -> WrapperResult<TokenStream> {
+        if let Some(name) = TYPE_MAPPINGS.get(self.literal_name.as_str()) {
+            return syn::parse_str::<syn::Type>(name)
+                .map(|ty| quote!(#ty))
+                .map_err(|_| WrapperError::Skip);
+        }
+
+        if let Some(ident) = self.lvgl_ident() {
+            if self.pointer_target().is_some() {
+                if self.literal_name.starts_with("* const ") {
+                    return Ok(quote!(*const lvgl_sys::#ident));
+                }
+
+                if self.literal_name.starts_with("* mut ") {
+                    return Ok(quote!(*mut lvgl_sys::#ident));
+                }
+            }
+
+            return Ok(quote!(lvgl_sys::#ident));
+        }
+
+        Err(WrapperError::Skip)
     }
 }
 
@@ -382,23 +424,31 @@ impl Rusty for LvType {
     type Parent = LvArg;
 
     fn code(&self, _parent: &Self::Parent) -> WrapperResult<TokenStream> {
-        match TYPE_MAPPINGS.get(self.literal_name.as_str()) {
-            Some(name) => {
-                let val = if self.is_str() {
-                    quote!(&cstr_core::CStr)
-                } else if self.literal_name.contains("lv_") {
-                    let ident = format_ident!("{}", name);
-                    quote!(&#ident)
-                } else {
-                    let ident = format_ident!("{}", name);
-                    quote!(#ident)
-                };
-                Ok(quote! {
-                    #val
-                })
-            }
-            None => Err(WrapperError::Skip),
+        if self.is_str() {
+            return Ok(quote!(&cstr_core::CStr));
         }
+
+        if let Some(name) = TYPE_MAPPINGS.get(self.literal_name.as_str()) {
+            return syn::parse_str::<syn::Type>(name)
+                .map(|ty| quote!(#ty))
+                .map_err(|_| WrapperError::Skip);
+        }
+
+        if let Some(ident) = self.lvgl_ident() {
+            if self.pointer_target().is_some() {
+                if self.literal_name.starts_with("* const ") {
+                    return Ok(quote!(*const lvgl_sys::#ident));
+                }
+
+                if self.literal_name.starts_with("* mut ") {
+                    return Ok(quote!(*mut lvgl_sys::#ident));
+                }
+            }
+
+            return Ok(quote!(lvgl_sys::#ident));
+        }
+
+        Err(WrapperError::Skip)
     }
 }
 
@@ -432,6 +482,7 @@ impl CodeGen {
                 if f.name
                     .starts_with(format!("{}{}", LIB_PREFIX, widget_name).as_str())
                     && f.is_method()
+                    && !Self::is_manually_implemented_method(widget_name, f)
                 {
                     ws.entry(widget_name.clone())
                         .or_insert_with(|| LvWidget {
@@ -446,6 +497,64 @@ impl CodeGen {
         });
 
         Ok(widgets.values().cloned().collect())
+    }
+
+    fn is_manually_implemented_method(widget_name: &str, func: &LvFunc) -> bool {
+        let widget = LvWidget {
+            name: widget_name.to_string(),
+            methods: Vec::new(),
+        };
+        let method = func.method_name(&widget);
+
+        matches!(
+            (widget_name, method.as_str()),
+            ("label", "set_long_mode")
+                | ("label", "get_long_mode")
+                | ("keyboard", "set_textarea")
+                | ("arc", "set_start_angle")
+                | ("arc", "set_end_angle")
+                | ("arc", "set_angles")
+                | ("arc", "set_bg_start_angle")
+                | ("arc", "set_bg_end_angle")
+                | ("arc", "set_bg_angles")
+                | ("arc", "set_rotation")
+                | ("arc", "set_mode")
+                | ("arc", "set_value")
+                | ("arc", "set_range")
+                | ("arc", "set_change_rate")
+                | ("arc", "set_knob_offset")
+                | ("arc", "get_angle_start")
+                | ("arc", "get_angle_end")
+                | ("arc", "get_bg_angle_start")
+                | ("arc", "get_bg_angle_end")
+                | ("arc", "get_value")
+                | ("arc", "get_min_value")
+                | ("arc", "get_max_value")
+                | ("arc", "get_mode")
+                | ("arc", "get_rotation")
+                | ("arc", "get_knob_offset")
+                | ("arc", "get_change_rate")
+                | ("table", "set_selected_cell")
+                | ("bar", "set_value")
+                | ("bar", "set_range")
+                | ("bar", "set_mode")
+                | ("bar", "set_orientation")
+                | ("bar", "get_value")
+                | ("bar", "get_min_value")
+                | ("bar", "get_max_value")
+                | ("bar", "get_mode")
+                | ("bar", "get_orientation")
+                | ("slider", "set_value")
+                | ("slider", "set_range")
+                | ("slider", "set_mode")
+                | ("slider", "set_orientation")
+                | ("slider", "get_value")
+                | ("slider", "get_left_value")
+                | ("slider", "get_min_value")
+                | ("slider", "get_max_value")
+                | ("slider", "get_mode")
+                | ("slider", "get_orientation")
+        )
     }
 
     fn get_widget_names(functions: &[LvFunc]) -> Vec<String> {

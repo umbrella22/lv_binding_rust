@@ -8,7 +8,6 @@ use std::{
 
 static CONFIG_NAME: &str = "DEP_LV_CONFIG_PATH";
 
-// See https://github.com/rust-lang/rust-bindgen/issues/687#issuecomment-450750547
 #[cfg(feature = "drivers")]
 #[derive(Debug)]
 struct IgnoreMacros(HashSet<String>);
@@ -47,8 +46,6 @@ fn main() {
         font_extra_src = None
     }
 
-    // Some basic defaults; SDL2 is the only driver enabled in the provided
-    // driver config by default
     #[cfg(feature = "drivers")]
     let incl_extra =
         env::var("LVGL_INCLUDE").unwrap_or("/usr/include,/usr/local/include".to_string());
@@ -59,29 +56,20 @@ fn main() {
     #[cfg(feature = "drivers")]
     let link_extra = env::var("LVGL_LINK").unwrap_or("SDL2".to_string());
 
-    #[cfg(feature = "drivers")]
-    let drivers = vendor.join("lv_drivers");
-
     let lv_config_dir = {
         let conf_path = env::var(CONFIG_NAME)
             .map(PathBuf::from)
-            .unwrap_or_else(|_| {
-                match std::env::var("DOCS_RS") {
-                    Ok(_) => {
-                        // We've detected that we are building for docs.rs
-                        // so let's use the vendored `lv_conf.h` file.
-                        vendor.join("include")
-                    }
-                    Err(_) => {
-                        #[cfg(not(feature = "use-vendored-config"))]
-                        panic!(
-                            "The environment variable {} is required to be defined",
-                            CONFIG_NAME
-                        );
+            .unwrap_or_else(|_| match std::env::var("DOCS_RS") {
+                Ok(_) => vendor.join("include"),
+                Err(_) => {
+                    #[cfg(not(feature = "use-vendored-config"))]
+                    panic!(
+                        "The environment variable {} is required to be defined",
+                        CONFIG_NAME
+                    );
 
-                        #[cfg(feature = "use-vendored-config")]
-                        vendor.join("include")
-                    }
+                    #[cfg(feature = "use-vendored-config")]
+                    vendor.join("include")
                 }
             });
 
@@ -102,14 +90,6 @@ fn main() {
                 CONFIG_NAME
             );
         }
-        #[cfg(feature = "drivers")]
-        if !conf_path.join("lv_drv_conf.h").exists() {
-            panic!(
-                "Directory {} referenced by {} needs to contain a file called lv_drv_conf.h",
-                conf_path.to_string_lossy(),
-                CONFIG_NAME
-            );
-        }
 
         if let Some(p) = &font_extra_src {
             println!("cargo:rerun-if-changed={}", p.to_str().unwrap())
@@ -118,11 +98,6 @@ fn main() {
         println!(
             "cargo:rerun-if-changed={}",
             conf_path.join("lv_conf.h").to_str().unwrap()
-        );
-        #[cfg(feature = "drivers")]
-        println!(
-            "cargo:rerun-if-changed={}",
-            conf_path.join("lv_drv_conf.h").to_str().unwrap()
         );
         conf_path
     };
@@ -140,8 +115,6 @@ fn main() {
     add_c_files(&mut cfg, &lvgl_src);
     add_c_files(&mut cfg, &lv_config_dir);
     add_c_files(&mut cfg, &shims_dir);
-    #[cfg(feature = "drivers")]
-    add_c_files(&mut cfg, &drivers);
 
     cfg.define("LV_CONF_INCLUDE_SIMPLE", Some("1"))
         .include(&lvgl_src)
@@ -153,8 +126,6 @@ fn main() {
     }
     #[cfg(feature = "rust_timer")]
     cfg.include(&timer_shim);
-    #[cfg(feature = "drivers")]
-    cfg.include(&drivers);
     #[cfg(feature = "drivers")]
     cfg.includes(incl_extra.split(','));
 
@@ -174,7 +145,6 @@ fn main() {
         "-fvisibility=default",
     ];
 
-    // Set correct target triple for bindgen when cross-compiling
     let target = env::var("TARGET").expect("Cargo build scripts always have TARGET");
     let host = env::var("HOST").expect("Cargo build scripts always have HOST");
     if target != host {
@@ -226,11 +196,7 @@ fn main() {
         bindgen::Builder::default().header(shims_dir.join("lvgl_sys.h").to_str().unwrap());
     let bindings = add_font_headers(bindings, &font_extra_src);
     #[cfg(feature = "drivers")]
-    let bindings = bindings
-        .header(shims_dir.join("lvgl_drv.h").to_str().unwrap())
-        .parse_callbacks(Box::new(ignored_macros));
-    //#[cfg(feature = "rust_timer")]
-    //let bindings = bindings.header(shims_dir.join("rs_timer.h").to_str().unwrap());
+    let bindings = bindings.parse_callbacks(Box::new(ignored_macros));
     let bindings = bindings
         .generate_comments(false)
         .derive_default(true)
@@ -250,7 +216,6 @@ fn main() {
     #[cfg(feature = "drivers")]
     link_extra.split(',').for_each(|a| {
         println!("cargo:rustc-link-lib={a}");
-        //println!("cargo:rustc-link-search=")
     })
 }
 

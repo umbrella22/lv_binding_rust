@@ -3,21 +3,14 @@ use core::ops::{Deref, DerefMut};
 use core::pin::Pin;
 use core::ptr::NonNull;
 
-/// Places a sized `T` into LVGL memory.
-///
-/// This is useful for cases when we need to allocate memory on Rust side
-/// and handover the management of that memory to LVGL. May also be used in cases we
-/// want to use dynamic memory in the Rust side.
 pub(crate) struct Box<T>(NonNull<T>);
 
 impl<T> Box<T> {
-    /// Allocate memory using LVGL memory API and place `T` in the LVGL tracked memory.
     pub fn new(value: T) -> Self {
         let size = mem::size_of::<T>();
         let inner = unsafe {
-            let ptr = lvgl_sys::lv_mem_alloc(size as cty::size_t) as *mut T;
+            let ptr = lvgl_sys::lv_malloc(size as cty::size_t) as *mut T;
 
-            // LVGL should align the memory address for us!
             assert_eq!(
                 ptr as usize % mem::align_of::<T>(),
                 0,
@@ -57,20 +50,12 @@ impl<T> Box<T> {
     pub fn pin(value: T) -> Pin<Self> {
         unsafe { Pin::new_unchecked(Box::new(value)) }
     }
-
-    //pub fn leak(mut self) -> &'static mut T {
-    //    let ret = self.as_mut() as *mut T;
-    //    core::mem::forget(self);
-    //    unsafe {
-    //        &mut *ret
-    //    }
-    //}
 }
 
 impl<T> Drop for Box<T> {
     fn drop(&mut self) {
         unsafe {
-            lvgl_sys::lv_mem_free(self.0.as_ptr() as *mut cty::c_void);
+            lvgl_sys::lv_free(self.0.as_ptr() as *mut cty::c_void);
         }
     }
 }
@@ -102,20 +87,11 @@ impl<T: Clone> Clone for Box<T> {
 }
 
 fn mem_info() -> lvgl_sys::lv_mem_monitor_t {
-    let mut info = lvgl_sys::lv_mem_monitor_t {
-        total_size: 0,
-        free_cnt: 0,
-        free_size: 0,
-        free_biggest_size: 0,
-        used_cnt: 0,
-        max_used: 0,
-        used_pct: 0,
-        frag_pct: 0,
-    };
+    let mut info = core::mem::MaybeUninit::<lvgl_sys::lv_mem_monitor_t>::uninit();
     unsafe {
-        lvgl_sys::lv_mem_monitor(&mut info as *mut _);
+        lvgl_sys::lv_mem_monitor(info.as_mut_ptr());
+        info.assume_init()
     }
-    info
 }
 
 #[cfg(test)]
@@ -176,14 +152,9 @@ mod test {
         }
         drop(keep);
 
-        //unsafe {
-        //    lvgl_sys::lv_mem_defrag();
-        //}
-
         let final_info = mem_info();
         println!("mem info: {:?}", &final_info);
 
-        // If this fails, we are leaking memory! BOOM! \o/
         assert_eq!(initial_mem_info.free_size, final_info.free_size);
     }
 
@@ -194,9 +165,7 @@ mod test {
         let v1 = Box::new(5);
         let v2 = v1.clone();
 
-        // Ensure that the two objects have identical values.
         assert_eq!(*v1, *v2);
-        // They should have different memory addresses, however.
         assert_ne!(v1.into_raw() as usize, v2.into_raw() as usize);
     }
 }

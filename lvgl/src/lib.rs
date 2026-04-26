@@ -32,7 +32,7 @@ extern crate alloc;
 // `lvgl_alloc` feature is enabled, is the LVGL memory manager then everything is in LVGL
 // managed memory anyways. In that case we can use the Rust's provided Box definition.
 #[cfg(feature = "lvgl_alloc")]
-use ::alloc::boxed::Box;
+use alloc::boxed::Box;
 
 #[cfg(feature = "lvgl_alloc")]
 mod allocator;
@@ -117,15 +117,15 @@ fn once_init() {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use crate::display::{Display, DrawBuffer};
+    use crate::display::Display;
 
     pub(crate) fn initialize_test(buf: bool) {
         unsafe { crate::deinit() };
         crate::init();
         if buf {
             const REFRESH_BUFFER_SIZE: usize = 240 * 240 / 10;
-            let buffer = DrawBuffer::<REFRESH_BUFFER_SIZE>::default();
-            let _ = Display::register(buffer, 240, 240, |_| {}).unwrap();
+            let display = Display::register::<_, REFRESH_BUFFER_SIZE>(240, 240, |_| {}).unwrap();
+            core::mem::forget(display);
         }
     }
 }

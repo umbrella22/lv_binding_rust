@@ -1,6 +1,6 @@
 [package]
 name = "lvgl-codegen"
-version = "0.6.2"
+version = "0.7.0"
 description = "Code generation based on LVGL source code"
 authors = ["Rafael Caricio <crates.lvgl@caric.io>", "Nia Espera <a5b6@riseup.net>"]
 readme = "README.md"
@@ -9,10 +9,9 @@ license = "MIT"
 repository = "https://github.com/rafaelcaricio/lvgl-rs"
 
 [dependencies]
-regex = "1.8.4"
-quote = "1.0.28"
-lazy_static = "1.4.0"
+regex = "1.11"
+quote = "1.0.37"
+lazy_static = "1.5.0"
 proc-macro2 = "1.0.60"
 Inflector = "0.11.4"
 syn = { version = "2.0.18", features = ["full"]}
-

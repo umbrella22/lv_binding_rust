@@ -2,9 +2,7 @@ use super::{BufferStatus, Data, InputDriver, InputState};
 use crate::Box;
 use crate::Point;
 use crate::{LvError, LvResult};
-use core::mem::MaybeUninit;
 
-/// Pointer-specific input data. Contains the point clicked and the key.
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub enum PointerInputData {
     Touch(Point),
@@ -21,10 +19,9 @@ impl PointerInputData {
     }
 }
 
-/// Represents a pointer-type input driver.
 pub struct Pointer {
-    pub(crate) driver: Box<lvgl_sys::lv_indev_drv_t>,
-    pub(crate) descriptor: Option<*mut lvgl_sys::lv_indev_t>,
+    descriptor: Option<*mut lvgl_sys::lv_indev_t>,
+    user_data_drop: Option<unsafe fn(*mut cty::c_void)>,
 }
 
 impl InputDriver<Pointer> for Pointer {
@@ -32,65 +29,27 @@ impl InputDriver<Pointer> for Pointer {
     where
         F: Fn() -> BufferStatus,
     {
-        let driver = unsafe {
-            let mut indev_drv = MaybeUninit::uninit();
-            lvgl_sys::lv_indev_drv_init(indev_drv.as_mut_ptr());
-            let mut indev_drv = Box::new(indev_drv.assume_init());
-            indev_drv.type_ = lvgl_sys::lv_indev_type_t_LV_INDEV_TYPE_POINTER;
-            indev_drv.read_cb = Some(read_input::<F>);
-            indev_drv.feedback_cb = Some(feedback);
-            indev_drv.user_data = Box::into_raw(Box::new(handler)) as *mut _;
-            indev_drv
-        };
+        unsafe {
+            let indev = lvgl_sys::lv_indev_create();
+            if indev.is_null() {
+                return Err(LvError::LvOOMemory);
+            }
 
-        let mut dev = Self {
-            driver,
-            descriptor: None,
-        };
+            lvgl_sys::lv_indev_set_type(indev, lvgl_sys::lv_indev_type_t_LV_INDEV_TYPE_POINTER);
+            lvgl_sys::lv_indev_set_read_cb(indev, Some(read_input::<F>));
 
-        match crate::indev_drv_register(&mut dev) {
-            Ok(()) => Ok(dev),
-            Err(e) => Err(e),
+            let user_data = Box::<F>::into_raw(Box::new(handler)) as *mut cty::c_void;
+            lvgl_sys::lv_indev_set_user_data(indev, user_data);
+
+            Ok(Self {
+                descriptor: Some(indev),
+                user_data_drop: Some(drop_input_handler::<F>),
+            })
         }
     }
 
-    fn get_driver(&mut self) -> &mut lvgl_sys::lv_indev_drv_t {
-        self.driver.as_mut()
-    }
-
-    fn get_descriptor(&mut self) -> Option<&mut lvgl_sys::lv_indev_t> {
-        match self.descriptor {
-            Some(d) => unsafe { d.as_mut() },
-            None => None,
-        }
-    }
-
-    unsafe fn new_raw(
-        read_cb: Option<
-            unsafe extern "C" fn(*mut lvgl_sys::_lv_indev_drv_t, *mut lvgl_sys::lv_indev_data_t),
-        >,
-        feedback_cb: Option<unsafe extern "C" fn(*mut lvgl_sys::_lv_indev_drv_t, u8)>,
-        _: &crate::Display,
-    ) -> LvResult<Self> {
-        let driver = unsafe {
-            let mut indev_drv = MaybeUninit::uninit();
-            lvgl_sys::lv_indev_drv_init(indev_drv.as_mut_ptr());
-            let mut indev_drv = Box::new(indev_drv.assume_init());
-            indev_drv.type_ = lvgl_sys::lv_indev_type_t_LV_INDEV_TYPE_POINTER;
-            indev_drv.read_cb = read_cb;
-            indev_drv.feedback_cb = feedback_cb;
-            indev_drv
-        };
-
-        let mut dev = Self {
-            driver,
-            descriptor: None,
-        };
-
-        match crate::indev_drv_register(&mut dev) {
-            Ok(()) => Ok(dev),
-            Err(e) => Err(e),
-        }
+    fn get_descriptor(&self) -> Option<*mut lvgl_sys::lv_indev_t> {
+        self.descriptor
     }
 
     unsafe fn set_descriptor(&mut self, descriptor: *mut lvgl_sys::lv_indev_t) -> LvResult<()> {
@@ -103,119 +62,86 @@ impl InputDriver<Pointer> for Pointer {
     }
 }
 
+impl Drop for Pointer {
+    fn drop(&mut self) {
+        if let Some(indev) = self.descriptor {
+            unsafe {
+                if let Some(drop_user_data) = self.user_data_drop {
+                    let user_data = lvgl_sys::lv_indev_get_user_data(indev);
+                    if !user_data.is_null() {
+                        drop_user_data(user_data);
+                        lvgl_sys::lv_indev_set_user_data(indev, core::ptr::null_mut());
+                    }
+                }
+                lvgl_sys::lv_indev_delete(indev);
+            }
+        }
+    }
+}
+
 unsafe extern "C" fn read_input<F>(
-    indev_drv: *mut lvgl_sys::lv_indev_drv_t,
+    indev: *mut lvgl_sys::lv_indev_t,
     data: *mut lvgl_sys::lv_indev_data_t,
 ) where
     F: Fn() -> BufferStatus,
 {
-    // convert user data to function
-    let user_closure = &mut *((*indev_drv).user_data as *mut F);
-    // call user data
+    let user_data = unsafe { lvgl_sys::lv_indev_get_user_data(indev) };
+    if user_data.is_null() {
+        return;
+    }
+    let user_closure = &mut *(user_data as *mut F);
     let info = user_closure();
     unsafe {
         (*data).continue_reading = match info {
             BufferStatus::Once(b) => {
-                (*data).state = match b {
-                    InputState::Pressed(d) => {
-                        match d {
-                            Data::Pointer(PointerInputData::Touch(point)) => {
-                                (*data).point.x = point.x as lvgl_sys::lv_coord_t;
-                                (*data).point.y = point.y as lvgl_sys::lv_coord_t;
-                            }
-                            Data::Pointer(PointerInputData::Key(_)) => {}
-                            _ => panic!("Non-pointer data returned from pointer device!"),
-                        }
-                        lvgl_sys::lv_indev_state_t_LV_INDEV_STATE_PRESSED
-                    }
-                    InputState::Released(d) => {
-                        match d {
-                            Data::Pointer(PointerInputData::Touch(point)) => {
-                                (*data).point.x = point.x as lvgl_sys::lv_coord_t;
-                                (*data).point.y = point.y as lvgl_sys::lv_coord_t;
-                            }
-                            Data::Pointer(PointerInputData::Key(_)) => {}
-                            _ => panic!("Non-pointer data returned from pointer device!"),
-                        }
-                        lvgl_sys::lv_indev_state_t_LV_INDEV_STATE_RELEASED
-                    }
-                };
+                fill_pointer_data(data, b);
                 false
             }
             BufferStatus::Buffered(b) => {
-                (*data).state = match b {
-                    InputState::Pressed(d) => {
-                        match d {
-                            Data::Pointer(PointerInputData::Touch(point)) => {
-                                (*data).point.x = point.x as lvgl_sys::lv_coord_t;
-                                (*data).point.y = point.y as lvgl_sys::lv_coord_t;
-                            }
-                            Data::Pointer(PointerInputData::Key(_)) => {}
-                            _ => panic!("Non-pointer data returned from pointer device!"),
-                        }
-                        lvgl_sys::lv_indev_state_t_LV_INDEV_STATE_PRESSED
-                    }
-                    InputState::Released(d) => {
-                        match d {
-                            Data::Pointer(PointerInputData::Touch(point)) => {
-                                (*data).point.x = point.x as lvgl_sys::lv_coord_t;
-                                (*data).point.y = point.y as lvgl_sys::lv_coord_t;
-                            }
-                            Data::Pointer(PointerInputData::Key(_)) => {}
-                            _ => panic!("Non-pointer data returned from pointer device!"),
-                        }
-                        lvgl_sys::lv_indev_state_t_LV_INDEV_STATE_RELEASED
-                    }
-                };
+                fill_pointer_data(data, b);
                 true
             }
         }
     }
 }
 
-unsafe extern "C" fn feedback(_indev_drv: *mut lvgl_sys::lv_indev_drv_t, _code: u8) {}
+unsafe fn fill_pointer_data(data: *mut lvgl_sys::lv_indev_data_t, state: InputState) {
+    match state {
+        InputState::Pressed(d) => {
+            match d {
+                Data::Pointer(PointerInputData::Touch(point)) => {
+                    (*data).point.x = point.x as i32;
+                    (*data).point.y = point.y as i32;
+                }
+                Data::Pointer(PointerInputData::Key(_)) => {}
+                _ => panic!("Non-pointer data returned from pointer device!"),
+            }
+            (*data).state = lvgl_sys::lv_indev_state_t_LV_INDEV_STATE_PRESSED;
+        }
+        InputState::Released(d) => {
+            match d {
+                Data::Pointer(PointerInputData::Touch(point)) => {
+                    (*data).point.x = point.x as i32;
+                    (*data).point.y = point.y as i32;
+                }
+                Data::Pointer(PointerInputData::Key(_)) => {}
+                _ => panic!("Non-pointer data returned from pointer device!"),
+            }
+            (*data).state = lvgl_sys::lv_indev_state_t_LV_INDEV_STATE_RELEASED;
+        }
+    }
+}
+
+unsafe fn drop_input_handler<F>(user_data: *mut cty::c_void) {
+    unsafe {
+        drop(Box::<F>::from_raw(user_data as *mut F));
+    }
+}
 
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::Display;
-    use core::marker::PhantomData;
-    use embedded_graphics::draw_target::DrawTarget;
-    use embedded_graphics::geometry::Size;
-    use embedded_graphics::pixelcolor::PixelColor;
-    use embedded_graphics::prelude::OriginDimensions;
-    use embedded_graphics::Pixel;
-
-    struct FakeDisplay<C>
-    where
-        C: PixelColor,
-    {
-        p: PhantomData<C>,
-    }
-
-    impl<C> DrawTarget for FakeDisplay<C>
-    where
-        C: PixelColor,
-    {
-        type Color = C;
-        type Error = ();
-
-        fn draw_iter<I>(&mut self, _pixels: I) -> Result<(), Self::Error>
-        where
-            I: IntoIterator<Item = Pixel<Self::Color>>,
-        {
-            Ok(())
-        }
-    }
-
-    impl<C> OriginDimensions for FakeDisplay<C>
-    where
-        C: PixelColor,
-    {
-        fn size(&self) -> Size {
-            Size::new(240, 240)
-        }
-    }
 
     #[test]
     fn pointer_input_device() {

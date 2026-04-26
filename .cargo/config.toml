@@ -1,0 +1,2 @@
+[alias]
+test-lvgl = "test -- --test-threads=1"

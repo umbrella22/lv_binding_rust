@@ -1,4 +1,3 @@
-use cstr_core::CString;
 use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::prelude::*;
 use embedded_graphics_simulator::{
@@ -6,8 +5,8 @@ use embedded_graphics_simulator::{
 };
 use lvgl;
 use lvgl::style::Style;
-use lvgl::widgets::{Bar, Label};
-use lvgl::{Align, AnimationState, Color, Display, LvError, Part, Widget};
+use lvgl::widgets::Scale;
+use lvgl::{Align, Color, Display, LvError, Part, Widget};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::thread::sleep;
@@ -23,7 +22,7 @@ fn main() -> Result<(), LvError> {
     ));
 
     let output_settings = OutputSettingsBuilder::new().scale(2).build();
-    let mut window = Window::new("Bar Example", &output_settings);
+    let mut window = Window::new("Scale Example", &output_settings);
 
     let display = Display::register::<_, { (HOR_RES * VER_RES) as usize }>(HOR_RES, VER_RES, {
         let sim_display = Rc::clone(&sim_display);
@@ -38,38 +37,26 @@ fn main() -> Result<(), LvError> {
     let mut screen = display.get_scr_act()?;
 
     let mut screen_style = Style::default();
-    screen_style.set_bg_color(Color::from_rgb((255, 255, 255)));
-    screen_style.set_radius(0);
+    screen_style.set_bg_color(Color::from_rgb((0, 0, 0)));
     screen.add_style(Part::Main, &mut screen_style);
 
-    let mut bar = Bar::create(&mut screen)?;
-    bar.set_size(175, 20);
-    bar.set_align(Align::Center, 0, 10);
-    bar.set_range(0, 100);
-    bar.on_event(|_b, _e| {
-        println!("Completed!");
-    })?;
+    let mut scale_style = Style::default();
+    scale_style.set_radius(5);
+    scale_style.set_bg_color(Color::from_rgb((192, 192, 192)));
+    scale_style.set_pad_top(20);
+    scale_style.set_pad_left(5);
+    scale_style.set_pad_right(5);
+    scale_style.set_line_color(Color::from_rgb((255, 255, 255)));
+    scale_style.set_line_width(2);
 
-    let mut ind_style = Style::default();
-    ind_style.set_bg_color(Color::from_rgb((100, 245, 100)));
-    bar.add_style(Part::Any, &mut ind_style);
-
-    let mut loading_lbl = Label::create(&mut screen)?;
-    loading_lbl.set_text(CString::new("Loading...").unwrap().as_c_str());
-    loading_lbl.set_align(Align::OutTopMid, 0, 0);
-
-    let mut loading_style = Style::default();
-    loading_style.set_text_color(Color::from_rgb((0, 0, 0)));
-    loading_lbl.add_style(Part::Main, &mut loading_style);
+    let mut scale = Scale::create(&mut screen)?;
+    scale.add_style(Part::Main, &mut scale_style);
+    scale.set_align(Align::Center, 0, 0);
+    scale.set_range(0, 100);
 
     let mut i = 0;
     'running: loop {
         let start = Instant::now();
-        if i > 100 {
-            i = 0;
-        }
-        bar.set_value(i, AnimationState::ON);
-        i += 1;
 
         lvgl::task_handler();
         {
@@ -79,11 +66,24 @@ fn main() -> Result<(), LvError> {
 
         for event in window.events() {
             match event {
+                SimulatorEvent::MouseButtonUp {
+                    mouse_btn: _,
+                    point,
+                } => {
+                    println!("Clicked on: {:?}", point);
+                }
                 SimulatorEvent::Quit => break 'running,
                 _ => {}
             }
         }
-        sleep(Duration::from_millis(15));
+
+        if i > 99 {
+            i = 0;
+        } else {
+            i += 1;
+        }
+
+        sleep(Duration::from_millis(16));
         lvgl::tick_inc(Instant::now().duration_since(start));
     }
 

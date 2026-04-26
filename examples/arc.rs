@@ -7,8 +7,10 @@ use embedded_graphics_simulator::{
 use lvgl;
 use lvgl::style::Style;
 use lvgl::widgets::{Arc, Label};
-use lvgl::{Align, Color, Display, DrawBuffer, LvError, Part, Widget};
+use lvgl::{Align, Color, Display, LvError, Part, Widget};
 use lvgl_sys;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::thread::sleep;
 use std::time::Duration;
 use std::time::Instant;
@@ -35,16 +37,21 @@ fn main() -> Result<(), LvError> {
     const VER_RES: u32 = 240;
 
     println!("meminfo init: {:?}", mem_info());
-    let mut sim_display: SimulatorDisplay<Rgb565> =
-        SimulatorDisplay::new(Size::new(HOR_RES, VER_RES));
+    let sim_display: Rc<RefCell<SimulatorDisplay<Rgb565>>> = Rc::new(RefCell::new(
+        SimulatorDisplay::new(Size::new(HOR_RES, VER_RES)),
+    ));
 
     let output_settings = OutputSettingsBuilder::new().scale(1).build();
     let mut window = Window::new("Arc Example", &output_settings);
 
-    let buffer = DrawBuffer::<{ (HOR_RES * VER_RES) as usize }>::default();
-
-    let display = Display::register(buffer, HOR_RES, VER_RES, |refresh| {
-        sim_display.draw_iter(refresh.as_pixels()).unwrap();
+    let display = Display::register::<_, { (HOR_RES * VER_RES) as usize }>(HOR_RES, VER_RES, {
+        let sim_display = Rc::clone(&sim_display);
+        move |refresh| {
+            sim_display
+                .borrow_mut()
+                .draw_iter(refresh.as_pixels())
+                .unwrap();
+        }
     })?;
 
     let mut screen = display.get_scr_act()?;
@@ -54,39 +61,38 @@ fn main() -> Result<(), LvError> {
     screen_style.set_radius(0);
     screen.add_style(Part::Main, &mut screen_style);
 
-    // Create the arc object
     let mut arc = Arc::create(&mut screen)?;
     arc.set_size(150, 150);
     arc.set_align(Align::Center, 0, 10);
-    arc.set_start_angle(135);
-    arc.set_end_angle(135);
+    arc.set_range(0, 270);
+    arc.set_value(0);
 
     let mut loading_lbl = Label::create(&mut screen)?;
-    loading_lbl.set_text(CString::new("Loading...").unwrap().as_c_str())?;
+    loading_lbl.set_text(CString::new("Loading...").unwrap().as_c_str());
     loading_lbl.set_align(Align::OutTopMid, 0, 0);
-    //loading_lbl.set_label_align(LabelAlign::Center)?;
 
     let mut loading_style = Style::default();
     loading_style.set_text_color(Color::from_rgb((0, 0, 0)));
     loading_lbl.add_style(Part::Main, &mut loading_style);
 
-    let mut angle = 0;
-    let mut forward = true;
     let mut i = 0;
+    let mut forward = true;
 
     'running: loop {
         let start = Instant::now();
         if i > 270 {
-            forward = if forward { false } else { true };
+            forward = !forward;
             i = 1;
             println!("mem info running: {:?}", mem_info());
         }
-        angle = if forward { angle + 1 } else { angle - 1 };
-        arc.set_end_angle(angle + 135)?;
+        arc.set_value(if forward { i } else { 270 - i });
         i += 1;
 
         lvgl::task_handler();
-        window.update(&sim_display);
+        {
+            let d = sim_display.borrow();
+            window.update(&*d);
+        }
 
         for event in window.events() {
             match event {

@@ -48,7 +48,7 @@ impl Drop for Group {
     fn drop(&mut self) {
         unsafe {
             if let Ok(mut p) = self.raw() {
-                lvgl_sys::lv_group_del(p.as_mut())
+                lvgl_sys::lv_group_delete(p.as_mut())
             }
         }
     }
@@ -57,19 +57,16 @@ impl Drop for Group {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::widgets::Btn;
-    use crate::{Display, DrawBuffer};
+    use crate::widgets::Button;
+    use crate::Display;
 
     #[test]
     fn group_test() {
-        const HOR_RES: u32 = 240;
-        const VER_RES: u32 = 240;
-        crate::tests::initialize_test(false);
-        let buffer = DrawBuffer::<{ (HOR_RES * VER_RES) as usize }>::default();
-        let display = Display::register(buffer, HOR_RES, VER_RES, |_| {}).unwrap();
+        crate::tests::initialize_test(true);
+        let display = Display::default();
         let mut screen = display.get_scr_act().unwrap();
         let mut group = Group::default();
-        let btn = Btn::create(&mut screen).unwrap();
+        let btn = Button::create(&mut screen).unwrap();
         group.add_obj(&btn).unwrap();
     }
 }

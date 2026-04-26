@@ -1,60 +1,100 @@
-// Still WIP
-//#![allow(unused_labels)]
-//#![allow(unused_variables)]
-//#![allow(unreachable_code)]
-
-use cstr_core::CString;
-use lvgl::input_device::InputDriver;
-use lvgl::lv_drv_disp_sdl;
-use lvgl::lv_drv_input_pointer_sdl;
+use embedded_graphics::pixelcolor::Rgb565;
+use embedded_graphics::prelude::*;
+use embedded_graphics_simulator::{
+    OutputSettingsBuilder, SimulatorDisplay, SimulatorEvent, Window,
+};
+use lvgl;
+use lvgl::input_device::{InputDriver, Pointer, PointerInputData};
 use lvgl::style::Style;
-use lvgl::widgets::{Btn, Label};
-use lvgl::LvResult;
-use lvgl::{Align, Color, DrawBuffer, Part, Widget};
+use lvgl::widgets::{Button, Label};
+use lvgl::{Align, Color, Display, LvError, Part, Widget};
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::thread::sleep;
 use std::time::Duration;
 use std::time::Instant;
 
-fn main() -> LvResult<()> {
+fn main() -> Result<(), LvError> {
     const HOR_RES: u32 = 240;
     const VER_RES: u32 = 240;
 
-    let buffer = DrawBuffer::<{ (HOR_RES * VER_RES) as usize }>::default();
-    let display = lv_drv_disp_sdl!(buffer, HOR_RES, VER_RES)?;
-    let _input = lv_drv_input_pointer_sdl!(display)?;
+    let sim_display: Rc<RefCell<SimulatorDisplay<Rgb565>>> = Rc::new(RefCell::new(
+        SimulatorDisplay::new(Size::new(HOR_RES, VER_RES)),
+    ));
 
-    // Create screen and widgets
+    let output_settings = OutputSettingsBuilder::new().scale(2).build();
+    let mut window = Window::new("SDL Example", &output_settings);
+
+    let display = Display::register::<_, { (HOR_RES * VER_RES) as usize }>(HOR_RES, VER_RES, {
+        let sim_display = Rc::clone(&sim_display);
+        move |refresh| {
+            sim_display
+                .borrow_mut()
+                .draw_iter(refresh.as_pixels())
+                .unwrap();
+        }
+    })?;
+
+    let mut latest_touch_status = PointerInputData::Touch(Point::new(0, 0)).released().once();
+    let _touch_screen = Pointer::register(|| latest_touch_status, &display)?;
+
     let mut screen = display.get_scr_act()?;
 
     let mut screen_style = Style::default();
     screen_style.set_bg_color(Color::from_rgb((0, 0, 0)));
     screen.add_style(Part::Main, &mut screen_style);
-    // Create the button
-    let mut button = Btn::create(&mut screen)?;
+    let mut button = Button::create(&mut screen)?;
     button.set_align(Align::LeftMid, 30, 0);
     button.set_size(180, 80);
     let mut btn_lbl = Label::create(&mut button)?;
-    btn_lbl.set_text(CString::new("Click me!").unwrap().as_c_str())?;
+    btn_lbl.set_text(cstr_core::CString::new("Click me!").unwrap().as_c_str());
 
     let mut btn_state = false;
     button.on_event(|_btn, event| {
         println!("Button received event: {:?}", event);
         if let lvgl::Event::Clicked = event {
             if btn_state {
-                let nt = CString::new("Click me!").unwrap();
-                btn_lbl.set_text(nt.as_c_str()).unwrap();
+                let nt = cstr_core::CString::new("Click me!").unwrap();
+                btn_lbl.set_text(nt.as_c_str());
             } else {
-                let nt = CString::new("Clicked!").unwrap();
-                btn_lbl.set_text(nt.as_c_str()).unwrap();
+                let nt = cstr_core::CString::new("Clicked!").unwrap();
+                btn_lbl.set_text(nt.as_c_str());
             }
             btn_state = !btn_state;
         }
     })?;
 
-    loop {
+    'running: loop {
         let start = Instant::now();
         lvgl::task_handler();
+        {
+            let d = sim_display.borrow();
+            window.update(&*d);
+        }
+
+        let events = window.events().peekable();
+        for event in events {
+            match event {
+                SimulatorEvent::MouseButtonDown {
+                    mouse_btn: _,
+                    point,
+                } => {
+                    println!("Clicked on: {:?}", point);
+                    latest_touch_status = PointerInputData::Touch(point).pressed().once();
+                }
+                SimulatorEvent::MouseButtonUp {
+                    mouse_btn: _,
+                    point,
+                } => {
+                    latest_touch_status = PointerInputData::Touch(point).released().once();
+                }
+                SimulatorEvent::Quit => break 'running,
+                _ => {}
+            }
+        }
         sleep(Duration::from_millis(5));
         lvgl::tick_inc(Instant::now().duration_since(start));
     }
+
+    Ok(())
 }

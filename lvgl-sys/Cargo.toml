@@ -1,7 +1,7 @@
 [package]
 name = "lvgl-sys"
 description = "Raw bindings to the LVGL C library."
-version = "0.6.2"
+version = "0.7.0"
 authors = ["Rafael Caricio <crates.lvgl-sys@caric.io>", "Nia Espera <a5b6@riseup.net>"]
 edition = "2021"
 license = "MIT"
@@ -28,12 +28,11 @@ name = "lvgl_sys"
 cty = "0.2.2"
 
 [build-dependencies]
-cc = "1.0.79"
-bindgen = "0.65.1"
+cc = "1.2"
+bindgen = "0.71"
 
 [features]
 use-vendored-config = []
 drivers = []
 rust_timer = []
-# if LV_TICK_CUSTOM = 1, then lv_tick_inc function is unavailable
 custom_timer = []

@@ -3,23 +3,27 @@ use crate::widgets::Table;
 use core::mem::MaybeUninit;
 
 impl Table<'_> {
-    /// Sets the column width. Row height cannot be set manually and is
-    /// calculated by LVGL based on styling parameters.
-    pub fn set_col_width(&mut self, column: u16, width: i16) {
-        unsafe { lvgl_sys::lv_table_set_col_width(self.core.raw().as_ptr(), column, width) }
+    pub fn set_col_width(&mut self, column: u32, width: i32) {
+        unsafe { lvgl_sys::lv_table_set_column_width(self.core.raw().as_ptr(), column, width) }
     }
 
-    /// Returns the selected cell as a tuple of (row, column).
-    pub fn get_selected_cell(&self) -> (u16, u16) {
-        let mut row = MaybeUninit::<u16>::uninit();
-        let mut col = MaybeUninit::<u16>::uninit();
+    pub fn get_col_width(&self, column: u32) -> i32 {
+        unsafe { lvgl_sys::lv_table_get_column_width(self.core.raw().as_ptr(), column) }
+    }
+
+    pub fn set_selected_cell(&mut self, row: u16, col: u16) {
+        unsafe { lvgl_sys::lv_table_set_selected_cell(self.core.raw().as_ptr(), row, col) }
+    }
+
+    pub fn get_selected_cell(&self) -> (u32, u32) {
+        let mut row = MaybeUninit::<u32>::uninit();
+        let mut col = MaybeUninit::<u32>::uninit();
         unsafe {
             lvgl_sys::lv_table_get_selected_cell(
                 self.core.raw().as_ptr(),
                 row.as_mut_ptr(),
                 col.as_mut_ptr(),
             );
-            // The values get initialised by LVGL
             (row.assume_init(), col.assume_init())
         }
     }
