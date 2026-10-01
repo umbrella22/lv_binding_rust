@@ -66,6 +66,18 @@ impl Animation {
         Ok(())
     }
 
+    pub fn set_reverse_delay(&mut self, delay: Duration) -> Result<(), TryFromIntError> {
+        (*self.raw.as_mut()).reverse_delay = delay.as_millis().try_into()?;
+        Ok(())
+    }
+
+    pub fn set_reverse_duration(&mut self, time: Duration) -> Result<(), TryFromIntError> {
+        unsafe {
+            lvgl_sys::lv_anim_set_reverse_duration(self.raw.as_mut(), time.as_millis().try_into()?);
+        }
+        Ok(())
+    }
+
     pub fn set_repeat_delay(&mut self, delay: Duration) -> Result<(), TryFromIntError> {
         unsafe {
             lvgl_sys::lv_anim_set_repeat_delay(self.raw.as_mut(), delay.as_millis().try_into()?);

@@ -1,16 +1,18 @@
-// LVGL 9.2.2 bindgen + cc build for the mLupine fork (mLupine-lvgl-9 branch).
+// LVGL 9.6.0 bindgen + cc build (LVGL 9 line; originally ported from the
+// mLupine-lvgl-9 branch which vendored 9.2.2).
 //
-// Vendored LVGL: vendor/lvgl-9.2/  (LVGL v9.2.2 release tarball
-//   SHA256 129b4e00e06639fa79d7e8a6cab3c1ecce2445b1a246652ccd34f22e7b17ad6f
-//   from https://github.com/lvgl/lvgl/archive/refs/tags/v9.2.2.tar.gz)
-// Vendored config: vendor/include-9.2/lv_conf.h (derived from upstream
+// Vendored LVGL: vendor/lvgl-9.6/  (LVGL v9.6.0 release tarball
+//   SHA256 b20ee3acc1bba13c62d854f9ebd62e4c51e0b443b1e0225892e86442defa84df
+//   from https://github.com/lvgl/lvgl/archive/refs/tags/v9.6.0.tar.gz;
+//   trimmed to the root build files + src/ + include/)
+// Vendored config: vendor/include-9.6/lv_conf.h (derived from upstream
 //   lv_conf_template.h with LV_USE_SNAPSHOT=1)
 //
-// On-target (ESP-IDF v6) consumers of `lupin-display` will use the LVGL
-// shipped by `esp_lvgl_port` (managed component lvgl__lvgl ~9.2.x); this
-// vendored copy is the host-side cargo-check target and the source of truth
-// for bindgen-generated FFI types. Both produce binary-compatible structs
-// because both compile against `lv_conf.h` settings that match.
+// On-target (ESP-IDF) consumers may instead link the LVGL shipped by
+// `esp_lvgl_port` (managed component lvgl__lvgl); this vendored copy is the
+// host-side cargo-check target and the source of truth for bindgen-generated
+// FFI types. Both produce binary-compatible structs because both compile
+// against `lv_conf.h` settings that match.
 
 use cc::Build;
 use std::{
@@ -22,13 +24,13 @@ fn main() {
     let project_dir = canonicalize(PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()));
     let shims_dir = project_dir.join("shims");
     let vendor = project_dir.join("vendor");
-    let lvgl_root = vendor.join("lvgl-9.2");
+    let lvgl_root = vendor.join("lvgl-9.6");
     let lvgl_src = lvgl_root.join("src");
-    let lv_config_dir = vendor.join("include-9.2");
+    let lv_config_dir = vendor.join("include-9.6");
 
     if !lv_config_dir.join("lv_conf.h").exists() {
         panic!(
-            "missing {} -- vendor LVGL 9.2 lv_conf.h not staged",
+            "missing {} -- vendor LVGL 9.6 lv_conf.h not staged",
             lv_config_dir.join("lv_conf.h").display()
         );
     }
@@ -110,7 +112,7 @@ fn main() {
         .allowlist_var("LV_.*")
         .blocklist_function("lv_log_add") // varargs (va_list); not safely bindable on all targets
         .generate()
-        .expect("Unable to generate LVGL 9.2 bindings");
+        .expect("Unable to generate LVGL 9.6 bindings");
 
     bindings
         .write_to_file(out_path.join("bindings.rs"))

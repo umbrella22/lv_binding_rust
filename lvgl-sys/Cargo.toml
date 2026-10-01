@@ -1,6 +1,6 @@
 [package]
 name = "lvgl-sys"
-description = "Raw bindings to the LVGL C library (LVGL 9.2.x)."
+description = "Raw bindings to the LVGL C library (LVGL 9.6.x)."
 version = "0.7.0"
 authors = ["Rafael Caricio <crates.lvgl-sys@caric.io>", "Nia Espera <a5b6@riseup.net>"]
 edition = "2021"
@@ -13,12 +13,12 @@ keywords = ["littlevgl", "lvgl"]
 build = "build.rs"
 links = "lvgl"
 exclude = [
-    "vendor/lvgl-9.2/demos",
-    "vendor/lvgl-9.2/tests",
-    "vendor/lvgl-9.2/examples",
-    "vendor/lvgl-9.2/docs",
-    "vendor/lvgl-9.2/scripts",
-    "vendor/lvgl-9.2/env_support",
+    "vendor/lvgl-9.6/demos",
+    "vendor/lvgl-9.6/tests",
+    "vendor/lvgl-9.6/examples",
+    "vendor/lvgl-9.6/docs",
+    "vendor/lvgl-9.6/scripts",
+    "vendor/lvgl-9.6/env_support",
 ]
 
 [lib]
@@ -32,7 +32,7 @@ cc = "1.2"
 bindgen = "0.71"
 
 [features]
-# LVGL 9.2 ships a single config file (vendor/include-9.2/lv_conf.h); no
+# LVGL ships a single config file (vendor/include-9.6/lv_conf.h); no
 # DEP_LV_CONFIG_PATH switching, so use-vendored-config is now the default.
 use-vendored-config = []
 # Legacy lv_drivers (SDL/Linux) backends -- not used on ESP-IDF v6 path

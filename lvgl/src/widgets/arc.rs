@@ -107,4 +107,8 @@ impl Arc<'_> {
     pub fn get_knob_offset(&self) -> i32 {
         unsafe { lvgl_sys::lv_arc_get_knob_offset(self.core.raw().as_ptr()) }
     }
+
+    pub fn get_change_rate(&self) -> u32 {
+        unsafe { lvgl_sys::lv_arc_get_change_rate(self.core.raw().as_ptr()) }
+    }
 }

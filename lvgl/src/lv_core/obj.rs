@@ -220,15 +220,15 @@ impl Default for Part {
 impl From<Part> for lvgl_sys::lv_part_t {
     fn from(self_: Part) -> lvgl_sys::lv_part_t {
         match self_ {
-            Part::Main => lvgl_sys::LV_PART_MAIN,
-            Part::Scrollbar => lvgl_sys::LV_PART_SCROLLBAR,
-            Part::Indicator => lvgl_sys::LV_PART_INDICATOR,
-            Part::Knob => lvgl_sys::LV_PART_KNOB,
-            Part::Selected => lvgl_sys::LV_PART_SELECTED,
-            Part::Items => lvgl_sys::LV_PART_ITEMS,
-            Part::Cursor => lvgl_sys::LV_PART_CURSOR,
-            Part::CustomFirst => lvgl_sys::LV_PART_CUSTOM_FIRST,
-            Part::Any => lvgl_sys::LV_PART_ANY,
+            Part::Main => lvgl_sys::lv_part_t_LV_PART_MAIN,
+            Part::Scrollbar => lvgl_sys::lv_part_t_LV_PART_SCROLLBAR,
+            Part::Indicator => lvgl_sys::lv_part_t_LV_PART_INDICATOR,
+            Part::Knob => lvgl_sys::lv_part_t_LV_PART_KNOB,
+            Part::Selected => lvgl_sys::lv_part_t_LV_PART_SELECTED,
+            Part::Items => lvgl_sys::lv_part_t_LV_PART_ITEMS,
+            Part::Cursor => lvgl_sys::lv_part_t_LV_PART_CURSOR,
+            Part::CustomFirst => lvgl_sys::lv_part_t_LV_PART_CUSTOM_FIRST,
+            Part::Any => lvgl_sys::lv_part_t_LV_PART_ANY,
         }
     }
 }

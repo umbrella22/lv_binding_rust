@@ -36,19 +36,19 @@ impl Default for Style {
 bitflags! {
     #[derive(Debug, Clone, Copy)]
     pub struct Opacity: u32 {
-        const OPA_TRANSP = lvgl_sys::LV_OPA_TRANSP as u32;
-        const OPA_0 = lvgl_sys::LV_OPA_0 as u32;
-        const OPA_10 = lvgl_sys::LV_OPA_10 as u32;
-        const OPA_20 = lvgl_sys::LV_OPA_20 as u32;
-        const OPA_30 = lvgl_sys::LV_OPA_30 as u32;
-        const OPA_40 = lvgl_sys::LV_OPA_40 as u32;
-        const OPA_50 = lvgl_sys::LV_OPA_50 as u32;
-        const OPA_60 = lvgl_sys::LV_OPA_60 as u32;
-        const OPA_70 = lvgl_sys::LV_OPA_70 as u32;
-        const OPA_80 = lvgl_sys::LV_OPA_80 as u32;
-        const OPA_90 = lvgl_sys::LV_OPA_90 as u32;
-        const OPA_100 = lvgl_sys::LV_OPA_100 as u32;
-        const OPA_COVER = lvgl_sys::LV_OPA_COVER as u32;
+        const OPA_TRANSP = lvgl_sys::_lv_opacity_level_t_LV_OPA_TRANSP as u32;
+        const OPA_0 = lvgl_sys::_lv_opacity_level_t_LV_OPA_0 as u32;
+        const OPA_10 = lvgl_sys::_lv_opacity_level_t_LV_OPA_10 as u32;
+        const OPA_20 = lvgl_sys::_lv_opacity_level_t_LV_OPA_20 as u32;
+        const OPA_30 = lvgl_sys::_lv_opacity_level_t_LV_OPA_30 as u32;
+        const OPA_40 = lvgl_sys::_lv_opacity_level_t_LV_OPA_40 as u32;
+        const OPA_50 = lvgl_sys::_lv_opacity_level_t_LV_OPA_50 as u32;
+        const OPA_60 = lvgl_sys::_lv_opacity_level_t_LV_OPA_60 as u32;
+        const OPA_70 = lvgl_sys::_lv_opacity_level_t_LV_OPA_70 as u32;
+        const OPA_80 = lvgl_sys::_lv_opacity_level_t_LV_OPA_80 as u32;
+        const OPA_90 = lvgl_sys::_lv_opacity_level_t_LV_OPA_90 as u32;
+        const OPA_100 = lvgl_sys::_lv_opacity_level_t_LV_OPA_100 as u32;
+        const OPA_COVER = lvgl_sys::_lv_opacity_level_t_LV_OPA_COVER as u32;
     }
 }
 
