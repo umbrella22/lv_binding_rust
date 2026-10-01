@@ -25,6 +25,7 @@ default = ["embedded_graphics", "drivers"]
 
 embedded_graphics = ["embedded-graphics"]
 drivers = ["lvgl-sys/drivers"]
+sdl = ["lvgl-sys/sdl"]
 alloc = ["cstr_core/alloc"]
 lvgl_alloc = ["alloc"]
 use-vendored-config = ["lvgl-sys/use-vendored-config"]
@@ -77,6 +78,11 @@ required-features = ["alloc", "embedded_graphics"]
 name = "sdl"
 path = "../examples/sdl.rs"
 required-features = ["alloc", "drivers"]
+
+[[example]]
+name = "sdl_demo"
+path = "../examples/sdl_demo.rs"
+required-features = ["sdl"]
 
 [[example]]
 name = "rust_timer"

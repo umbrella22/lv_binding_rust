@@ -22,23 +22,21 @@
 //! the `lvgl` crate.
 //!
 //! # Custom fonts
-//! Custom fonts encoded into C files can be added. At compile time, the
-//! following locations will be searched in order:
-//! - `LVGL_FONTS_DIR` environment variable (if set)
-//! - `fonts/` in the project root directory, non-recursively
-//!
-//! Any detected fonts will be made available, namespaced under the `lvgl_sys`
-//! crate. They can then unsafely be converted into `Font` structs, as seen
-//! here with the Noto font used in the `demo` example:
+//! Fonts converted to a C source file (e.g. with the [official online
+//! converter]) can be compiled into `lvgl-sys` by dropping the file into a
+//! directory included by its build script, or linked in by the final
+//! application. The symbol can then unsafely be converted into a `Font`
+//! struct. Built-in fonts enabled in `lv_conf.h` (e.g. `montserrat_14`,
+//! which this crate enables by default) work the same way:
 //! ```
 //! use lvgl::font::Font;
 //! use lvgl::style::Style;
 //!
-//! let noto_80 = unsafe {
-//!     Font::new_raw(lvgl_sys::noto_sans_numeric_80)
+//! let montserrat_14 = unsafe {
+//!     Font::new_raw(lvgl_sys::lv_font_montserrat_14)
 //! };
 //! let mut my_style = Style::default();
-//! my_style.set_text_font(noto_80);
+//! my_style.set_text_font(montserrat_14);
 //! // Use the style
 //! ```
 //! This operation is inherently unsafe as it instantiates and uses arbitrary

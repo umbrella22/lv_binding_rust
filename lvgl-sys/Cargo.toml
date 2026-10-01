@@ -35,6 +35,10 @@ bindgen = "0.71"
 # LVGL ships a single config file (vendor/include-9.6/lv_conf.h); no
 # DEP_LV_CONFIG_PATH switching, so use-vendored-config is now the default.
 use-vendored-config = []
+# Desktop simulator: compile + link LVGL's native SDL2 backend
+# (src/drivers/sdl, LV_USE_SDL=1). Requires SDL2 on the host; default
+# builds (e.g. ESP cross-compiles) are unaffected.
+sdl = []
 # Legacy lv_drivers (SDL/Linux) backends -- not used on ESP-IDF v6 path
 # (esp_lvgl_port supplies flush). Kept as a no-op feature for Cargo.toml
 # back-compat with existing dependents.

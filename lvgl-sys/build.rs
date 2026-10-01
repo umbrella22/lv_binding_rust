@@ -42,6 +42,45 @@ fn main() {
     println!("cargo:rerun-if-changed={}", shims_dir.to_str().unwrap());
     println!("cargo:rerun-if-changed={}", lvgl_src.to_str().unwrap());
 
+    // SDL2 desktop-simulator backend (LV_USE_SDL), enabled by the `sdl`
+    // feature. The vendored lv_conf.h keeps LV_USE_SDL=0 so default builds
+    // (e.g. ESP cross-compiles) never need SDL headers; the feature build
+    // overrides it through a generated LV_CONF_PATH header.
+    let sdl_flags = if env::var("CARGO_FEATURE_SDL").is_ok() {
+        let flags = discover_sdl2().expect(
+            "feature `sdl` requires SDL2: install it (brew install sdl2) \
+             so `pkg-config sdl2` or `sdl2-config` works",
+        );
+        let conf_override = PathBuf::from(env::var("OUT_DIR").unwrap()).join("lv_conf_sdl.h");
+        std::fs::write(
+            &conf_override,
+            // Resolve the vendored config via the -I include-9.6 include path,
+            // then flip the SDL backend on for this build only. Logging goes
+            // to stdout so simulator runs can be diagnosed from the console.
+            r#"#include "lv_conf.h"
+
+#undef LV_USE_SDL
+#define LV_USE_SDL 1
+
+/* The embedded TLSF pool (LV_MEM_SIZE, 64 kB) is far too small to host a
+ * desktop-size framebuffer snapshot; the simulator allocates from the C
+ * heap instead. Embedded builds keep the built-in pool. */
+#undef LV_USE_STDLIB_MALLOC
+#define LV_USE_STDLIB_MALLOC LV_STDLIB_CLIB
+
+#undef LV_USE_LOG
+#define LV_USE_LOG 1
+#undef LV_LOG_LEVEL
+#define LV_LOG_LEVEL LV_LOG_LEVEL_WARN
+#undef LV_LOG_PRINTF
+#define LV_LOG_PRINTF 1
+"#,
+        )
+        .expect("write lv_conf_sdl.h");        Some((flags, conf_override))
+    } else {
+        None
+    };
+
     let mut cfg = Build::new();
     add_c_files(&mut cfg, &lvgl_src);
     add_c_files(&mut cfg, &shims_dir);
@@ -53,6 +92,19 @@ fn main() {
         .include(&vendor)
         .warnings(false);
 
+    if let Some((sdl, conf_override)) = &sdl_flags {
+        // LV_CONF_PATH wins over LV_CONF_INCLUDE_SIMPLE inside
+        // lv_conf_internal.h and must be a C string literal.
+        let conf_define = format!("{:?}", conf_override.display());
+        cfg.define("LV_CONF_PATH", Some(conf_define.as_str()));
+        for i in &sdl.include_dirs {
+            cfg.include(i);
+        }
+        for (k, v) in &sdl.defines {
+            cfg.define(k, Some(v.as_str()));
+        }
+    }
+
     let cflags_extra = env::var("LVGL_CFLAGS").unwrap_or_default();
     let cflags_extra: Vec<&str> = cflags_extra.split(',').filter(|s| !s.is_empty()).collect();
     for e in &cflags_extra {
@@ -61,6 +113,18 @@ fn main() {
     }
 
     cfg.compile("lvgl");
+
+    if let Some((sdl, _)) = &sdl_flags {
+        for dir in &sdl.link_dirs {
+            println!("cargo:rustc-link-search=native={dir}");
+        }
+        for lib in &sdl.libs {
+            println!("cargo:rustc-link-lib=dylib={lib}");
+        }
+        for fw in &sdl.frameworks {
+            println!("cargo:rustc-link-lib=framework={fw}");
+        }
+    }
 
     let mut cc_args = vec![
         "-DLV_CONF_INCLUDE_SIMPLE=1".to_string(),
@@ -93,6 +157,20 @@ fn main() {
         }
     }
 
+    if let Some((sdl, conf_override)) = &sdl_flags {
+        cc_args.push(format!("-DLV_CONF_PATH={:?}", conf_override.display()));
+        for i in &sdl.include_dirs {
+            cc_args.push(format!("-I{}", i));
+        }
+        for (k, v) in &sdl.defines {
+            if v.is_empty() {
+                cc_args.push(format!("-D{k}"));
+            } else {
+                cc_args.push(format!("-D{k}={v}"));
+            }
+        }
+    }
+
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     let bindings = bindgen::Builder::default()
         .header(shims_dir.join("lvgl_sys.h").to_str().unwrap())
@@ -110,6 +188,9 @@ fn main() {
         // (lvgl-sys/shims/lvgl_sys.{h,c}) and are spelled `_LV_COLOR_*`.
         .allowlist_function("_LV_COLOR_.*")
         .allowlist_var("LV_.*")
+        // Built-in fonts are extern `lv_font_t` variables (lowercase), e.g.
+        // lv_font_montserrat_14; expose the ones enabled in lv_conf.h.
+        .allowlist_var("lv_font_.*")
         .blocklist_function("lv_log_add") // varargs (va_list); not safely bindable on all targets
         .generate()
         .expect("Unable to generate LVGL 9.6 bindings");
@@ -129,6 +210,87 @@ fn add_c_files(build: &mut cc::Build, path: impl AsRef<Path>) {
             build.file(&p);
         }
     }
+}
+
+/// Compile/link flags for SDL2, discovered via `pkg-config sdl2` with a
+/// `sdl2-config` fallback (Homebrew ships both).
+struct SdlFlags {
+    include_dirs: Vec<String>,
+    defines: Vec<(String, String)>,
+    link_dirs: Vec<String>,
+    libs: Vec<String>,
+    frameworks: Vec<String>,
+}
+
+fn discover_sdl2() -> Option<SdlFlags> {
+    use std::process::Command;
+
+    let mut flags = SdlFlags {
+        include_dirs: Vec::new(),
+        defines: Vec::new(),
+        link_dirs: Vec::new(),
+        libs: Vec::new(),
+        frameworks: Vec::new(),
+    };
+    let mut saw_any = false;
+
+    let mut absorb = |out: &str| {
+        let mut fw_next = false;
+        for tok in out.split_whitespace() {
+            if fw_next {
+                flags.frameworks.push(tok.to_string());
+                fw_next = false;
+            } else if let Some(dir) = tok.strip_prefix("-I") {
+                if !dir.is_empty() {
+                    flags.include_dirs.push(dir.to_string());
+                }
+            } else if let Some(def) = tok.strip_prefix("-D") {
+                let (k, v) = def.split_once('=').unwrap_or((def, ""));
+                flags.defines.push((k.to_string(), v.to_string()));
+            } else if let Some(dir) = tok.strip_prefix("-L") {
+                if !dir.is_empty() {
+                    flags.link_dirs.push(dir.to_string());
+                }
+            } else if let Some(lib) = tok.strip_prefix("-l") {
+                if !lib.is_empty() {
+                    flags.libs.push(lib.to_string());
+                }
+            } else if tok == "-framework" {
+                fw_next = true;
+            }
+        }
+    };
+
+    if let Ok(out) = Command::new("pkg-config").args(["--cflags", "sdl2"]).output() {
+        if out.status.success() {
+            absorb(&String::from_utf8_lossy(&out.stdout));
+            saw_any = true;
+        }
+    }
+    if let Ok(out) = Command::new("pkg-config").args(["--libs", "sdl2"]).output() {
+        if out.status.success() {
+            absorb(&String::from_utf8_lossy(&out.stdout));
+            saw_any = true;
+        }
+    }
+    if !saw_any {
+        if let Ok(out) = Command::new("sdl2-config").arg("--cflags").output() {
+            if out.status.success() {
+                absorb(&String::from_utf8_lossy(&out.stdout));
+                saw_any = true;
+            }
+        }
+        if let Ok(out) = Command::new("sdl2-config").arg("--libs").output() {
+            if out.status.success() {
+                absorb(&String::from_utf8_lossy(&out.stdout));
+                saw_any = true;
+            }
+        }
+    }
+    if !saw_any {
+        return None;
+    }
+    Some(flags)
 }
 
 /// Locate the xtensa-esp-elf newlib include dir by asking
