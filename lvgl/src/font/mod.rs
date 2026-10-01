@@ -5,8 +5,11 @@
 //!
 //! # Built-in fonts
 //! LVGL offers several fonts for Latin (only up to ASCII), Arabic, Persian,
-//! and Hebrew, along with CJK glyphs. These can be enabled in `lv_conf.h` and
-//! once enabled will be usable as-is:
+//! and Hebrew, along with CJK glyphs. Fonts enabled in the vendored
+//! `lv_conf.h` (e.g. `montserrat_14`) are usable on stable Rust through
+//! their `lvgl_sys::lv_font_*` symbols (see the example below); the
+//! `Font::montserrat_*()` helper constructors additionally require the
+//! `nightly` feature:
 //! ```ignore
 //! use lvgl::font::Font;
 //! use lvgl::style::Style;
@@ -18,16 +21,12 @@
 //! }
 //! ```
 //!
-//! Built-in fonts are *only* available if the `nightly` feature is enabled for
-//! the `lvgl` crate.
-//!
 //! # Custom fonts
-//! Fonts converted to a C source file (e.g. with the [official online
-//! converter]) can be compiled into `lvgl-sys` by dropping the file into a
-//! directory included by its build script, or linked in by the final
-//! application. The symbol can then unsafely be converted into a `Font`
-//! struct. Built-in fonts enabled in `lv_conf.h` (e.g. `montserrat_14`,
-//! which this crate enables by default) work the same way:
+//! Custom fonts converted to a C source file (e.g. with the [official online
+//! converter]) can be compiled into `lvgl-sys` by dropping the file into its
+//! `shims/` directory and declaring the symbol in `shims/lvgl_sys.h`. The
+//! symbol can then unsafely be converted into a `Font` struct, exactly like
+//! the built-in font in this example:
 //! ```
 //! use lvgl::font::Font;
 //! use lvgl::style::Style;

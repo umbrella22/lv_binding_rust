@@ -50,7 +50,7 @@ fn main() -> Result<(), LvError> {
     style_time.set_text_color(Color::from_rgb((255, 255, 255)));
     style_time.set_text_align(TextAlign::Center);
 
-    style_time.set_text_font(unsafe { Font::new_raw(lvgl_sys::noto_sans_numeric_80) });
+    style_time.set_text_font(unsafe { Font::new_raw(lvgl_sys::lv_font_montserrat_14) });
 
     time.add_style(Part::Main, &mut style_time);
     time.set_align(Align::Center, 0, 90);

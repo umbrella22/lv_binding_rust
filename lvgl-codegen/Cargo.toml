@@ -6,7 +6,7 @@ authors = ["Rafael Caricio <crates.lvgl@caric.io>", "Nia Espera <a5b6@riseup.net
 readme = "README.md"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/rafaelcaricio/lvgl-rs"
+repository = "https://github.com/umbrella22/lv_binding_rust"
 
 [dependencies]
 regex = "1.11"

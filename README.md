@@ -10,7 +10,6 @@ LVGL is compatible with <samp>#![no_std]</samp> environments by default.
 </p>
 
 <h4 align="center">
-<a href="https://github.com/rafaelcaricio/lvgl-rs-wasm">Rust to WASM demo</a> &middot;
 <a href="https://lvgl.io/">Official LVGL Website </a> &middot;
 <a href="https://github.com/littlevgl/lvgl">C library repository</a> &middot;
 <a href="https://lvgl.io/demos">Official live demos</a>
@@ -41,16 +40,21 @@ Edit your `Cargo.toml` file dependencies with:
 $ cargo add lvgl
 ```
 
-The build requires the environment variable bellow to be set:
+The build needs no configuration: `lvgl-sys` compiles a vendored LVGL 9.6
+source tree against the vendored `lv_conf.h` (`lvgl-sys/vendor/include-9.6/`).
+To tweak LVGL features, edit that header — everything `lv_conf.h` enables
+(built-in fonts, `LV_USE_SNAPSHOT`, ...) is picked up by the bindings.
 
-- `DEP_LV_CONFIG_PATH`: Path to the directory containing the `lv_conf.h` header file used for configuration of LVGL library.
-- (Optional) `LVGL_FONTS_DIR`: Directory for custom fonts generated for use in LVGL. See the documentation for usage.
-- (Optional) `LVGL_INCLUDE`: C headers to include during the build if using the `drivers` feature, comma-separated. The default is `/usr/include,/usr/local/include`.
-- (Optional) `LVGL_LINK`: C libraries to link in during the build if using the `drivers` feature, comma-separated. The default is `SDL2`.
+Two optional knobs remain:
 
-We recommend the `lv_conf.h` file to be in your project's root directory. If so, the command to build your project would be:
+- (Optional) `LVGL_CFLAGS`: extra C compiler definitions (comma-separated
+  `NAME=VALUE` pairs) forwarded to both the C build and bindgen.
+- The `sdl` feature builds LVGL's native SDL2 backend for a desktop
+  simulator window (requires SDL2 on the host; embedded/ESP builds are
+  unaffected and never need SDL). See the examples below.
+
 ```shell script
-$ DEP_LV_CONFIG_PATH=`pwd` cargo build
+$ cargo build
 ```
 
 ### Building for embedded environments
@@ -60,7 +64,7 @@ for `no_std`, so we need to use a workaround to build "lvgl-rs". The mainstrem i
 [rust-lang/cargo#7915](https://github.com/rust-lang/cargo/issues/7915).
 
 ```shell
-DEP_LV_CONFIG_PATH=`pwd` cargo build -Z features=build_dep
+cargo build -Z features=build_dep
 ```
 
 The `unsafe_no_autoinit` feature must also be enabled when building for baremetal targets. See its documentation in `Cargo.toml` for notes on usage.
@@ -82,16 +86,17 @@ $ brew install sdl2
 
 [This project contains examples that can run in a desktop simulator.](./examples)
 
-First, make sure to pull `lvgl-rs` submodules:
+Run the `demo` example (embedded-graphics simulator window):
+
 ```shell
-$ git submodule init
-$ git submodule update 
+$ cargo run --example demo --features="alloc"
 ```
 
-Then run the `demo` example:
+Or open LVGL's native SDL2 simulator window (`sdl_demo`, no
+embedded-graphics involved):
 
 ```shell
-$ DEP_LV_CONFIG_PATH=`pwd`/examples/include cargo run --example demo --features="alloc"
+$ cargo run -p lvgl --example sdl_demo --features sdl
 ```
 
 ## Feature Support
@@ -107,16 +112,18 @@ Safe bindings are generated using the `lvgl-codegen` lib, which takes the raw un
 
 List of LVGL features that impacts the library usage in general.
 - [x] Displays: We use [`embedded_graphics`](https://docs.rs/embedded-graphics/0.6.2/embedded_graphics/) library to
-      draw to the display, along with [`lv_drivers`](https://github.com/lvgl/lv_drivers). You can
-      use `lvgl-rs` with any of the [`embedded_graphics`](https://docs.rs/embedded-graphics/0.6.2/embedded_graphics/#supported-displays) supported
-      displays, and those supported by [`lv_drivers`](https://github.com/lvgl/lv_drivers).
-      **Note:** [`lv_drivers`](https://github.com/lvgl/lv_drivers) support is currently experimental.
+      draw to the display. You can register any display with a flush callback via
+      `Display::register`, or open LVGL's native SDL2 window with the `sdl` feature
+      (`lv_sdl_window`) for desktop simulation.
 - [x] Events: You can listen and trigger events in widget objects.
 - [x] Styles: You can set styles in any exposed object. We are still missing the possibility of defining global base styles.
-- [x] Input Devices: Input devices supported by [`lv_drivers`](https://github.com/lvgl/lv_drivers)
-      can be used, and custom handlers can be specified for [`embedded_graphics`](https://docs.rs/embedded-graphics/0.6.2/embedded_graphics/). Currently, only pointer input devices are supported.
-      **Note:** [`lv_drivers`](https://github.com/lvgl/lv_drivers) support is currently experimental.
-- [x] Fonts: All fonts built-in to LVGL can be used on nightly Rust if the `nightly` feature is enabled. Custom fonts can also be encoded into a C file (see the documentation on the `font` module).
+- [x] Input Devices: custom input drivers can be registered through the `input_device`
+      module (pointer, encoder, button); LVGL's native SDL mouse/keyboard backends
+      are available with the `sdl` feature. Currently, only pointer input devices are supported.
+- [x] Fonts: Fonts enabled in the vendored `lv_conf.h` (e.g. `montserrat_14`) can be
+      used directly; the `Font::montserrat_*()` helpers additionally require the
+      `nightly` feature. Custom fonts can also be encoded into a C file (see the
+      documentation on the `font` module).
 - [x] Animations: Creating basic animations is supported entirely from Rust.
 - [ ] Images
 - [ ] File system

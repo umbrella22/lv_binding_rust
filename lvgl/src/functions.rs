@@ -2,7 +2,6 @@ use crate::display::Display;
 use crate::input_device::InputDriver;
 use crate::{Event, LvError, LvResult, Obj, Widget};
 use core::ptr::NonNull;
-#[cfg(not(feature = "rust_timer"))]
 use core::time::Duration;
 use core::{ptr, result};
 
@@ -38,7 +37,6 @@ pub(crate) fn get_str_act(disp: Option<&Display>) -> Result<Obj<'_>> {
 }
 
 #[inline]
-#[cfg(not(any(feature = "rust_timer", feature = "custom_timer")))]
 pub fn tick_inc(tick_period: Duration) {
     unsafe {
         lvgl_sys::lv_tick_inc(tick_period.as_millis() as u32);

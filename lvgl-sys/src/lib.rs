@@ -17,19 +17,19 @@ mod string_impl;
 mod tests {
     use super::*;
 
-    /// LVGL 9 sanity: lv_init succeeds and lv_display_get_horizontal_resolution
-    /// on a NULL display pointer returns 0 (no default display registered).
+    /// LVGL 9 sanity: lv_init succeeds and a created display reports the
+    /// requested resolution through the real (non-NULL) display path.
     #[test]
     fn basic_sanity_check() {
         unsafe {
             lv_init();
 
-            let horizontal_resolution =
-                lv_display_get_horizontal_resolution(core::ptr::null_mut());
-            assert_eq!(horizontal_resolution, 0);
-
-            let vertical_resolution = lv_display_get_vertical_resolution(core::ptr::null_mut());
-            assert_eq!(vertical_resolution, 0);
+            let disp = lv_display_create(320, 240);
+            assert!(!disp.is_null());
+            assert_eq!(lv_display_get_horizontal_resolution(disp), 320);
+            assert_eq!(lv_display_get_vertical_resolution(disp), 240);
+            lv_display_delete(disp);
+            assert!(lv_display_get_default().is_null());
         }
     }
 }

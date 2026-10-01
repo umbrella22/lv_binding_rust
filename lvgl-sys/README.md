@@ -1,13 +1,23 @@
 # lvgl-sys
-Rust raw bindings for LittlevGL library and drivers.
+Rust raw bindings for the LVGL C library.
 
 ## Usage
 
-Build requires environment variables to be set:
+No configuration is required: the build compiles the vendored LVGL 9.6
+source tree (`vendor/lvgl-9.6/`) against the vendored `lv_conf.h`
+(`vendor/include-9.6/lv_conf.h`). Edit that header to enable or disable
+LVGL features; everything it enables is picked up by the generated
+bindings.
 
-- `DEP_LV_CONFIG_PATH`: Path to the directory containing the `lv_conf.h` header file used for configuration of LVGL library.
-
-We recommend the `lv_conf.h` file to be in your project's root directory. If so, the command to build your project would be:
 ```shell script
-$ DEP_LV_CONFIG_PATH=`pwd` cargo build
+$ cargo build
 ```
+
+The optional `LVGL_CFLAGS` environment variable forwards extra C compiler
+definitions (comma-separated `NAME=VALUE` pairs) to both the C build and
+bindgen.
+
+The `sdl` cargo feature additionally compiles and links LVGL's native SDL2
+backend (`LV_USE_SDL`) for desktop simulation; it requires SDL2 on the host
+and is never enabled by default, so embedded/ESP cross-builds don't need
+SDL installed.

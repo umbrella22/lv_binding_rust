@@ -1,5 +1,9 @@
-[build.env]
-passthrough = ["DEP_LV_CONFIG_PATH", "LVGL_INCLUDE", "LVGL_LINK"]
+# Cross (cross-rs) cross-compilation config.
+#
+# The LVGL 9 build needs no environment passthrough: lvgl-sys compiles the
+# vendored C sources directly (see lvgl-sys/build.rs). Historically this
+# file passed DEP_LV_CONFIG_PATH/LVGL_INCLUDE/LVGL_LINK to the build; those
+# variables are no longer read.
 
 # See https://github.com/rafaelcaricio/lvgl-rs/issues/78 for more details on
 # the current status of `Cross` support.

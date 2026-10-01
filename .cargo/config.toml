@@ -8,5 +8,7 @@ runner    = "espflash flash --monitor"
 rustflags = ["--cfg", "espidf_time64"]
 
 [unstable]
-# Cross-compiles for xtensa need build-std (no prebuilt std for the target).
+# Only takes effect together with an explicit --target (e.g. the xtensa
+# section above); plain host `cargo build/test` ignores it. Cargo has no
+# per-target syntax for build-std, so it lives globally in this file.
 build-std = ["std", "panic_abort"]

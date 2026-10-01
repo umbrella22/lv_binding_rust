@@ -41,42 +41,43 @@ fn main() {
     );
     println!("cargo:rerun-if-changed={}", shims_dir.to_str().unwrap());
     println!("cargo:rerun-if-changed={}", lvgl_src.to_str().unwrap());
+    // Public headers: bindgen resolves lvgl.h -> include/lvgl/**, so edits
+    // there must retrigger both cc and bindgen.
+    println!(
+        "cargo:rerun-if-changed={}",
+        lvgl_root.join("lvgl.h").to_str().unwrap()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        lvgl_root.join("lvgl_private.h").to_str().unwrap()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        lvgl_root.join("include").to_str().unwrap()
+    );
+    println!("cargo:rerun-if-env-changed=LVGL_CFLAGS");
 
     // SDL2 desktop-simulator backend (LV_USE_SDL), enabled by the `sdl`
-    // feature. The vendored lv_conf.h keeps LV_USE_SDL=0 so default builds
+    // feature. The vendored lv_conf.h keeps the backend off so default builds
     // (e.g. ESP cross-compiles) never need SDL headers; the feature build
-    // overrides it through a generated LV_CONF_PATH header.
+    // prepends a patched copy of the config via include-path order.
     let sdl_flags = if env::var("CARGO_FEATURE_SDL").is_ok() {
-        let flags = discover_sdl2().expect(
-            "feature `sdl` requires SDL2: install it (brew install sdl2) \
-             so `pkg-config sdl2` or `sdl2-config` works",
-        );
-        let conf_override = PathBuf::from(env::var("OUT_DIR").unwrap()).join("lv_conf_sdl.h");
+        let flags = discover_sdl2().unwrap_or_else(|| {
+            panic!(
+                "feature `sdl` requires SDL2: install it (e.g. `brew install sdl2` \
+                 or `apt install libsdl2-dev`) so `pkg-config sdl2` or `sdl2-config` works"
+            )
+        });
+        let sdl_conf_dir = PathBuf::from(env::var("OUT_DIR").unwrap()).join("sdl-conf");
+        std::fs::create_dir_all(&sdl_conf_dir).expect("create sdl-conf dir");
+        let base_conf = std::fs::read_to_string(lv_config_dir.join("lv_conf.h"))
+            .expect("read vendored lv_conf.h");
         std::fs::write(
-            &conf_override,
-            // Resolve the vendored config via the -I include-9.6 include path,
-            // then flip the SDL backend on for this build only. Logging goes
-            // to stdout so simulator runs can be diagnosed from the console.
-            r#"#include "lv_conf.h"
-
-#undef LV_USE_SDL
-#define LV_USE_SDL 1
-
-/* The embedded TLSF pool (LV_MEM_SIZE, 64 kB) is far too small to host a
- * desktop-size framebuffer snapshot; the simulator allocates from the C
- * heap instead. Embedded builds keep the built-in pool. */
-#undef LV_USE_STDLIB_MALLOC
-#define LV_USE_STDLIB_MALLOC LV_STDLIB_CLIB
-
-#undef LV_USE_LOG
-#define LV_USE_LOG 1
-#undef LV_LOG_LEVEL
-#define LV_LOG_LEVEL LV_LOG_LEVEL_WARN
-#undef LV_LOG_PRINTF
-#define LV_LOG_PRINTF 1
-"#,
+            sdl_conf_dir.join("lv_conf.h"),
+            patch_lv_conf_for_sdl(&base_conf),
         )
-        .expect("write lv_conf_sdl.h");        Some((flags, conf_override))
+        .expect("write sdl-conf/lv_conf.h");
+        Some((flags, sdl_conf_dir))
     } else {
         None
     };
@@ -85,18 +86,20 @@ fn main() {
     add_c_files(&mut cfg, &lvgl_src);
     add_c_files(&mut cfg, &shims_dir);
 
-    cfg.define("LV_CONF_INCLUDE_SIMPLE", Some("1"))
-        .include(&lvgl_root)
+    cfg.define("LV_CONF_INCLUDE_SIMPLE", Some("1"));
+    if let Some((_, sdl_conf_dir)) = &sdl_flags {
+        // Must precede lv_config_dir: quoted includes search -I in order, so
+        // `#include "lv_conf.h"` resolves to the patched copy, not the
+        // vendored one.
+        cfg.include(sdl_conf_dir);
+    }
+    cfg.include(&lvgl_root)
         .include(&lvgl_src)
         .include(&lv_config_dir)
         .include(&vendor)
         .warnings(false);
 
-    if let Some((sdl, conf_override)) = &sdl_flags {
-        // LV_CONF_PATH wins over LV_CONF_INCLUDE_SIMPLE inside
-        // lv_conf_internal.h and must be a C string literal.
-        let conf_define = format!("{:?}", conf_override.display());
-        cfg.define("LV_CONF_PATH", Some(conf_define.as_str()));
+    if let Some((sdl, _)) = &sdl_flags {
         for i in &sdl.include_dirs {
             cfg.include(i);
         }
@@ -157,17 +160,15 @@ fn main() {
         }
     }
 
-    if let Some((sdl, conf_override)) = &sdl_flags {
-        cc_args.push(format!("-DLV_CONF_PATH={:?}", conf_override.display()));
+    if let Some((sdl, sdl_conf_dir)) = &sdl_flags {
+        // Insert before lv_config_dir (cc_args[1]) so `#include "lv_conf.h"`
+        // resolves to the patched copy, mirroring the cc include order.
+        cc_args.insert(1, format!("-I{}", sdl_conf_dir.display()));
         for i in &sdl.include_dirs {
             cc_args.push(format!("-I{}", i));
         }
         for (k, v) in &sdl.defines {
-            if v.is_empty() {
-                cc_args.push(format!("-D{k}"));
-            } else {
-                cc_args.push(format!("-D{k}={v}"));
-            }
+            cc_args.push(format!("-D{k}={v}"));
         }
     }
 
@@ -184,9 +185,6 @@ fn main() {
         .allowlist_type("_lv_.*")
         .allowlist_function("lv_.*")
         .allowlist_function("_lv_.*")
-        // The custom color-channel accessors live in our shim
-        // (lvgl-sys/shims/lvgl_sys.{h,c}) and are spelled `_LV_COLOR_*`.
-        .allowlist_function("_LV_COLOR_.*")
         .allowlist_var("LV_.*")
         // Built-in fonts are extern `lv_font_t` variables (lowercase), e.g.
         // lv_font_montserrat_14; expose the ones enabled in lv_conf.h.
@@ -222,30 +220,55 @@ struct SdlFlags {
     frameworks: Vec<String>,
 }
 
+impl SdlFlags {
+    fn empty() -> Self {
+        SdlFlags {
+            include_dirs: Vec::new(),
+            defines: Vec::new(),
+            link_dirs: Vec::new(),
+            libs: Vec::new(),
+            frameworks: Vec::new(),
+        }
+    }
+}
+
 fn discover_sdl2() -> Option<SdlFlags> {
     use std::process::Command;
 
-    let mut flags = SdlFlags {
-        include_dirs: Vec::new(),
-        defines: Vec::new(),
-        link_dirs: Vec::new(),
-        libs: Vec::new(),
-        frameworks: Vec::new(),
-    };
-    let mut saw_any = false;
+    fn probe(tool: &str, arg: &str) -> Option<String> {
+        let out = Command::new(tool).arg(arg).output().ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    }
 
-    let mut absorb = |out: &str| {
+    fn absorb(out: &str, flags: &mut SdlFlags) {
         let mut fw_next = false;
         for tok in out.split_whitespace() {
             if fw_next {
                 flags.frameworks.push(tok.to_string());
                 fw_next = false;
             } else if let Some(dir) = tok.strip_prefix("-I") {
-                if !dir.is_empty() {
-                    flags.include_dirs.push(dir.to_string());
+                if dir.is_empty() {
+                    continue;
+                }
+                flags.include_dirs.push(dir.to_string());
+                // `sdl2-config` only exposes the .../include/SDL2 leaf, while
+                // LVGL includes "SDL2/SDL.h" relative to the include root.
+                if Path::new(dir).file_name().and_then(|s| s.to_str()) == Some("SDL2") {
+                    if let Some(parent) = Path::new(dir).parent() {
+                        let parent = parent.to_string_lossy().to_string();
+                        if !flags.include_dirs.contains(&parent) {
+                            flags.include_dirs.push(parent);
+                        }
+                    }
                 }
             } else if let Some(def) = tok.strip_prefix("-D") {
                 let (k, v) = def.split_once('=').unwrap_or((def, ""));
+                // A bare `-Dfoo` means "defined as 1" for C compilers; keep
+                // the cc and bindgen args identical by normalizing here.
+                let v = if v.is_empty() { "1" } else { v };
                 flags.defines.push((k.to_string(), v.to_string()));
             } else if let Some(dir) = tok.strip_prefix("-L") {
                 if !dir.is_empty() {
@@ -257,40 +280,81 @@ fn discover_sdl2() -> Option<SdlFlags> {
                 }
             } else if tok == "-framework" {
                 fw_next = true;
+            } else if let Some(rest) = tok.strip_prefix("-Wl,") {
+                // e.g. `-Wl,-framework,Cocoa` from pkg-config --libs
+                let mut parts = rest.split(',');
+                while let Some(part) = parts.next() {
+                    if part == "-framework" {
+                        if let Some(fw) = parts.next() {
+                            flags.frameworks.push(fw.to_string());
+                        }
+                    }
+                    // other linker flags (rpath, ...) are left to the dylib
+                }
+            } else if tok.starts_with('-') {
+                println!("cargo:warning=lvgl-sys: ignoring unrecognized SDL2 flag `{tok}`");
             }
         }
-    };
+    }
 
-    if let Ok(out) = Command::new("pkg-config").args(["--cflags", "sdl2"]).output() {
-        if out.status.success() {
-            absorb(&String::from_utf8_lossy(&out.stdout));
-            saw_any = true;
-        }
-    }
-    if let Ok(out) = Command::new("pkg-config").args(["--libs", "sdl2"]).output() {
-        if out.status.success() {
-            absorb(&String::from_utf8_lossy(&out.stdout));
-            saw_any = true;
-        }
-    }
-    if !saw_any {
-        if let Ok(out) = Command::new("sdl2-config").arg("--cflags").output() {
-            if out.status.success() {
-                absorb(&String::from_utf8_lossy(&out.stdout));
-                saw_any = true;
-            }
-        }
-        if let Ok(out) = Command::new("sdl2-config").arg("--libs").output() {
-            if out.status.success() {
-                absorb(&String::from_utf8_lossy(&out.stdout));
-                saw_any = true;
+    // pkg-config is preferred, but both queries must succeed: a partial
+    // result (e.g. a broken .pc) would silently drop include or link flags.
+    let mut flags = SdlFlags::empty();
+    let mut pkg_errs: Vec<String> = Vec::new();
+    let mut pkg_ok = true;
+    for arg in ["--cflags", "--libs"] {
+        match probe("pkg-config", arg) {
+            Some(out) => absorb(&out, &mut flags),
+            None => {
+                pkg_ok = false;
+                pkg_errs.push(format!("pkg-config {arg} failed"));
             }
         }
     }
-    if !saw_any {
-        return None;
+    if !pkg_ok {
+        flags = SdlFlags::empty();
+        let cfg_ok = probe("sdl2-config", "--cflags").is_some_and(|out| {
+            absorb(&out, &mut flags);
+            true
+        });
+        let libs_ok = probe("sdl2-config", "--libs").is_some_and(|out| {
+            absorb(&out, &mut flags);
+            true
+        });
+        if !(cfg_ok && libs_ok) {
+            for e in &pkg_errs {
+                println!("cargo:warning=lvgl-sys: {e}");
+            }
+            println!("cargo:warning=lvgl-sys: sdl2-config fallback failed; is SDL2 installed?");
+            return None;
+        }
     }
     Some(flags)
+}
+
+/// Patch the vendored lv_conf.h for SDL simulator builds: SDL backend on,
+/// C allocator (the 64 kB embedded TLSF pool cannot host desktop-size
+/// snapshot buffers), warnings to stdout. Textual patching against the
+/// pinned vendored file keeps default builds untouched.
+fn patch_lv_conf_for_sdl(base: &str) -> String {
+    let edits = [
+        ("#define LV_USE_SDL 0", "#define LV_USE_SDL 1"),
+        (
+            "#define LV_USE_STDLIB_MALLOC LV_STDLIB_BUILTIN",
+            "#define LV_USE_STDLIB_MALLOC LV_STDLIB_CLIB",
+        ),
+        ("#define LV_USE_LOG 0", "#define LV_USE_LOG 1"),
+        ("#define LV_LOG_PRINTF 0", "#define LV_LOG_PRINTF 1"),
+    ];
+    let mut s = base.to_string();
+    for (from, to) in edits {
+        assert!(
+            s.contains(from),
+            "lv_conf.h no longer contains `{from}`; update patch_lv_conf_for_sdl"
+        );
+        s = s.replace(from, to);
+    }
+    s
 }
 
 /// Locate the xtensa-esp-elf newlib include dir by asking

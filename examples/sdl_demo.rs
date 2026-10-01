@@ -49,7 +49,11 @@ fn main() -> Result<(), LvError> {
     screen.add_style(Part::Main, &mut bg);
 
     let mut title = Label::create(&mut screen)?;
-    title.set_text(CString::new("LVGL 9.6.0 x SDL2 simulator").unwrap().as_c_str());
+    title.set_text(
+        CString::new("LVGL 9.6.0 x SDL2 simulator")
+            .unwrap()
+            .as_c_str(),
+    );
     let mut title_style = Style::default();
     title_style.set_text_color(Color::from_rgb((0xE8, 0xE8, 0xE8)));
     title.add_style(Part::Main, &mut title_style);
@@ -61,10 +65,9 @@ fn main() -> Result<(), LvError> {
     let mut status = Label::create(&mut screen)?;
     status.set_text(CString::new("frame 0").unwrap().as_c_str());
 
-    // If the UI never produces a single non-black pixel, rendering is broken;
-    // snapshot the screen mid-run and count non-zero bytes.
-    let mut snapshot_checked = false;
-
+    // After ~1.5 s of pumping, snapshot the screen and verify real pixel
+    // output: the bottom-right corner must show the background color
+    // (0x10,0x18,0x28) as little-endian ARGB8888 bytes [B,G,R,A].
     for frame in 0..FRAMES {
         unsafe { sys::lv_timer_handler() };
         sleep(Duration::from_millis(5));
@@ -75,8 +78,7 @@ fn main() -> Result<(), LvError> {
         if frame % 50 == 0 {
             status.set_text(CString::new(format!("frame {frame}")).unwrap().as_c_str());
         }
-        if frame == 150 && !snapshot_checked {
-            snapshot_checked = true;
+        if frame == 150 {
             let buf = unsafe {
                 sys::lv_snapshot_take(
                     screen.raw().as_mut(),
@@ -84,15 +86,21 @@ fn main() -> Result<(), LvError> {
                 )
             };
             assert!(!buf.is_null(), "lv_snapshot_take returned null");
-            let (non_zero, total) = unsafe {
+            unsafe {
                 let size = (*buf).data_size as usize;
                 let data = std::slice::from_raw_parts((*buf).data, size);
-                let nz = data.iter().filter(|b| **b != 0).count();
+                let non_zero = data.iter().filter(|b| **b != 0).count();
+                println!("snapshot: {non_zero}/{size} non-zero bytes (ARGB8888)");
+                let (w, h) = (HOR_RES as usize, VER_RES as usize);
+                let bottom_right = &data[(w * h - 1) * 4..w * h * 4];
+                assert_eq!(
+                    bottom_right,
+                    &[0x28, 0x18, 0x10, 0xFF],
+                    "bottom-right pixel is not the background color"
+                );
                 sys::lv_draw_buf_destroy(buf);
-                (nz, size)
-            };
-            println!("snapshot: {non_zero}/{total} non-zero bytes (ARGB8888)");
-            assert!(non_zero > 0, "screen rendered no pixels");
+            }
+            println!("snapshot: bottom-right pixel matches background 0x101828");
         }
     }
 
