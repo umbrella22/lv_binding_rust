@@ -4,7 +4,7 @@ include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 
 pub use self::arc::ArcMode;
 pub use self::bar::{BarMode, BarOrientation};
-pub use self::slider::{SliderMode, SliderOrientation};
+pub use self::slider::SliderMode;
 
 mod arc;
 mod bar;

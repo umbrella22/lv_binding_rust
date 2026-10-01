@@ -4,11 +4,11 @@ description = "LVGL bindings for Rust. A powerful and easy-to-use embedded GUI w
 version = "0.7.0"
 authors = ["Rafael Caricio <crates.lvgl@caric.io>", "Nia Espera <a5b6@riseup.net>"]
 edition = "2021"
-repository = "https://github.com/rafaelcaricio/lvgl-rs"
+repository = "https://github.com/umbrella22/lv_binding_rust"
 license = "MIT"
 readme = "../README.md"
 categories = ["api-bindings", "embedded", "gui", "no-std"]
-keywords = ["littlevgl", "lvgl", "graphical_interfaces"]
+keywords = ["littlevgl", "lvgl"]
 build = "build.rs"
 
 [dependencies]

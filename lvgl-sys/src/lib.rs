@@ -17,15 +17,18 @@ mod string_impl;
 mod tests {
     use super::*;
 
+    /// LVGL 9 sanity: lv_init succeeds and lv_display_get_horizontal_resolution
+    /// on a NULL display pointer returns 0 (no default display registered).
     #[test]
     fn basic_sanity_check() {
         unsafe {
             lv_init();
 
-            let horizontal_resolution = lv_disp_get_hor_res(core::ptr::null_mut());
+            let horizontal_resolution =
+                lv_display_get_horizontal_resolution(core::ptr::null_mut());
             assert_eq!(horizontal_resolution, 0);
 
-            let vertical_resolution = lv_disp_get_ver_res(core::ptr::null_mut());
+            let vertical_resolution = lv_display_get_vertical_resolution(core::ptr::null_mut());
             assert_eq!(vertical_resolution, 0);
         }
     }

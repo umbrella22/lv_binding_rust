@@ -40,13 +40,13 @@ impl Label<'_> {
 
     pub fn get_long_mode(&self) -> LabelLongMode {
         match unsafe { lvgl_sys::lv_label_get_long_mode(self.raw().as_ref()) } {
-            lvgl_sys::lv_label_long_mode_t_LV_LABEL_LONG_MODE_WRAP => LabelLongMode::Wrap,
-            lvgl_sys::lv_label_long_mode_t_LV_LABEL_LONG_MODE_DOTS => LabelLongMode::Dots,
-            lvgl_sys::lv_label_long_mode_t_LV_LABEL_LONG_MODE_SCROLL => LabelLongMode::Scroll,
-            lvgl_sys::lv_label_long_mode_t_LV_LABEL_LONG_MODE_SCROLL_CIRCULAR => {
+            lvgl_sys::lv_label_long_mode_t_LV_LABEL_LONG_WRAP => LabelLongMode::Wrap,
+            lvgl_sys::lv_label_long_mode_t_LV_LABEL_LONG_DOT => LabelLongMode::Dots,
+            lvgl_sys::lv_label_long_mode_t_LV_LABEL_LONG_SCROLL => LabelLongMode::Scroll,
+            lvgl_sys::lv_label_long_mode_t_LV_LABEL_LONG_SCROLL_CIRCULAR => {
                 LabelLongMode::ScrollCircular
             }
-            lvgl_sys::lv_label_long_mode_t_LV_LABEL_LONG_MODE_CLIP => LabelLongMode::Clip,
+            lvgl_sys::lv_label_long_mode_t_LV_LABEL_LONG_CLIP => LabelLongMode::Clip,
             _ => unreachable!("unknown lv_label_long_mode_t value"),
         }
     }

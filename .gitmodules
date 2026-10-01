@@ -1,4 +1,0 @@
-[submodule "lvgl-sys/vendor/lvgl"]
-	path = lvgl-sys/vendor/lvgl
-	url = https://github.com/lvgl/lvgl.git
-	

@@ -302,13 +302,22 @@ impl From<AnimationState> for bool {
     }
 }
 
+impl From<AnimationState> for u32 {
+    fn from(anim: AnimationState) -> Self {
+        match anim {
+            AnimationState::ON => lvgl_sys::lv_anim_enable_t_LV_ANIM_ON,
+            AnimationState::OFF => lvgl_sys::lv_anim_enable_t_LV_ANIM_OFF,
+        }
+    }
+}
+
 #[repr(u32)]
 pub enum LabelLongMode {
-    Wrap = lvgl_sys::lv_label_long_mode_t_LV_LABEL_LONG_MODE_WRAP,
-    Dots = lvgl_sys::lv_label_long_mode_t_LV_LABEL_LONG_MODE_DOTS,
-    Scroll = lvgl_sys::lv_label_long_mode_t_LV_LABEL_LONG_MODE_SCROLL,
-    ScrollCircular = lvgl_sys::lv_label_long_mode_t_LV_LABEL_LONG_MODE_SCROLL_CIRCULAR,
-    Clip = lvgl_sys::lv_label_long_mode_t_LV_LABEL_LONG_MODE_CLIP,
+    Wrap = lvgl_sys::lv_label_long_mode_t_LV_LABEL_LONG_WRAP,
+    Dots = lvgl_sys::lv_label_long_mode_t_LV_LABEL_LONG_DOT,
+    Scroll = lvgl_sys::lv_label_long_mode_t_LV_LABEL_LONG_SCROLL,
+    ScrollCircular = lvgl_sys::lv_label_long_mode_t_LV_LABEL_LONG_SCROLL_CIRCULAR,
+    Clip = lvgl_sys::lv_label_long_mode_t_LV_LABEL_LONG_CLIP,
 }
 
 impl From<LabelLongMode> for lvgl_sys::lv_label_long_mode_t {
