@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Native LVGL SDL2 desktop simulation through the `sdl` feature and the
+  `sdl_demo` example.
+- The official LVGL widgets demo through `lvgl/demo-widgets` and
+  `lvgl-sys/lv-demo-widgets`, including its required sources and assets.
+- Explicit `unsafe Display::delete()` for removing a registered native display.
+- Regression tests for display lifetimes, partial and padded refresh buffers,
+  generated pointer APIs, timer reinitialization, SDL configuration, and demo
+  package contents.
+
+### Changed
+
+- **Breaking:** Migrate the Rust bindings to LVGL 9 and upgrade the vendored LVGL sources to
+  9.6.0.
+- Build against the vendored configuration in `lvgl-sys/vendor/include-9.6/`,
+  with consistent configuration and `LVGL_CFLAGS` definitions for the C compiler
+  and bindgen.
+- Use the C library allocator in the vendored LVGL configuration.
+- **Breaking:** Generated methods accepting raw pointer arguments now require
+  `unsafe` and document the corresponding C API memory and lifetime requirements.
+  Returning a raw pointer alone does not make a method unsafe.
+- **Breaking:** Dropping a `Display` handle no longer deletes the native display.
+  Registered callbacks and draw buffers are released when LVGL deletes the
+  display, including through `unsafe Display::delete()` or `unsafe deinit()`.
+  Raw cleanup hooks run during native deletion, before screen destruction.
+  Deletion requires all rendering and transfers to finish, no subsequent use of
+  associated handles, and no reentrant use from deletion callbacks.
+- **Breaking:** Safe `Display::register` renders in RGB888 independently of the
+  configured default color format, with `N` denoting the maximum refresh pixel
+  count. `register_raw` retains the configured format and allocates
+  `N * size_of::<lv_color_t>()` bytes, which need not hold exactly `N` pixels.
+
+### Fixed
+
+- Decode only the current refresh area using the actual row stride, skipping
+  padding and unused buffer capacity. Reject invalid display dimensions and
+  buffers too small for one aligned display row.
+- Preserve default-display aliases and implicitly created widgets after a Rust
+  display handle is dropped, and release registered resources on native deletion.
+- Run contained value destructors before freeing allocations made by the
+  internal LVGL-backed `Box`.
+- Scale RGB888 channels correctly when converting colors to RGB565.
+- Register the Rust clock through LVGL 9's runtime tick callback, restore it after
+  deinitialization and reinitialization, and keep `tick_inc` available with the
+  timer features enabled.
+- Make SDL configuration patches idempotent and accept configurations already
+  using the C library allocator.
+- Correct SDL2 include and linker flag handling, discovery fallback, and build
+  configuration change tracking.
+- Include the widgets demo's required files in published crates so the demo
+  feature also builds from an unpacked package.
+- Update examples, font documentation, and CI checks for the LVGL 9 build and
+  native SDL2 simulator.
+
+### Removed
+
+- Legacy LVGL 8 external configuration, library, and font auto-discovery through
+  `DEP_LV_CONFIG_PATH`, `LVGL_INCLUDE`, `LVGL_LINK`, and `LVGL_FONTS_DIR`.
+- The legacy `lv_drivers` backend integration; the `drivers` feature remains as
+  a compatibility no-op in `lvgl-sys`. Native desktop simulation uses `sdl`.
+
 ## [0.6.2]
 
 ### Fixed
@@ -98,7 +160,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No (direct) dependency on `clang-rs`
 
-[Unreleased]: https://github.com/rafaelcaricio/lvgl-rs/compare/0.6.2..HEAD
+[Unreleased]: https://github.com/umbrella22/lv_binding_rust/compare/d83b374...master
 [0.6.2]: https://github.com/rafaelcaricio/lvgl-rs/compare/0.6.1..0.6.2
 [0.6.1]: https://github.com/rafaelcaricio/lvgl-rs/compare/0.6.0..0.6.1
 [0.6.0]: https://github.com/rafaelcaricio/lvgl-rs/compare/0.5.2..0.6.0
