@@ -1007,13 +1007,13 @@
 #define LV_FONT_MONTSERRAT_10 0
 
 /** Montserrat 12 */
-#define LV_FONT_MONTSERRAT_12 0
+#define LV_FONT_MONTSERRAT_12 1
 
 /** Montserrat 14 */
 #define LV_FONT_MONTSERRAT_14 1
 
 /** Montserrat 16 */
-#define LV_FONT_MONTSERRAT_16 0
+#define LV_FONT_MONTSERRAT_16 1
 
 /** Montserrat 18 */
 #define LV_FONT_MONTSERRAT_18 0
@@ -2607,7 +2607,7 @@
 #define LV_USE_DEMO_VECTOR_GRAPHIC 0
 
 /** Widgets demo */
-#define LV_USE_DEMO_WIDGETS 0
+#define LV_USE_DEMO_WIDGETS 1
 
 /** Flex layout demo */
 #define LV_USE_DEMO_FLEX_LAYOUT 0

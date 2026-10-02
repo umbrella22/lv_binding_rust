@@ -56,6 +56,7 @@ fn main() {
         lvgl_root.join("include").to_str().unwrap()
     );
     println!("cargo:rerun-if-env-changed=LVGL_CFLAGS");
+    println!("cargo:rerun-if-env-changed=LVGL_SYSROOT");
 
     // SDL2 desktop-simulator backend (LV_USE_SDL), enabled by the `sdl`
     // feature. The vendored lv_conf.h keeps the backend off so default builds
@@ -85,6 +86,18 @@ fn main() {
     let mut cfg = Build::new();
     add_c_files(&mut cfg, &lvgl_src);
     add_c_files(&mut cfg, &shims_dir);
+
+    // Official widgets demo (`demo-widgets` cargo feature): compile the
+    // vendored demo sources. LV_USE_DEMO_WIDGETS itself is enabled in the
+    // vendored lv_conf.h.
+    let demo_widgets = env::var("CARGO_FEATURE_LV_DEMO_WIDGETS").is_ok();
+    if demo_widgets {
+        let widgets_dir = lvgl_root.join("demos").join("widgets");
+        add_c_files(&mut cfg, &widgets_dir);
+        // lv_demo_widgets refers to the shared demo-args helper, which is
+        // defined at demos/lv_demos.c (other demos' calls compile out).
+        cfg.file(lvgl_root.join("demos").join("lv_demos.c"));
+    }
 
     cfg.define("LV_CONF_INCLUDE_SIMPLE", Some("1"));
     if let Some((_, sdl_conf_dir)) = &sdl_flags {
@@ -143,9 +156,33 @@ fn main() {
 
     let target = env::var("TARGET").expect("Cargo build scripts always have TARGET");
     let host = env::var("HOST").expect("Cargo build scripts always have HOST");
+    let triple;
+    let mut arch_args: Vec<String> = Vec::new();
+    if let Some(isa) = target
+        .strip_prefix("riscv32")
+        .and_then(|rest| rest.split('-').next())
+    {
+        // Rust-style triples ("riscv32imafc-unknown-none-elf") are not valid
+        // clang *driver* triples; pass the canonical LLVM triple plus explicit
+        // ISA/ABI (single-arg -march=value form: libclang rejects the split
+        // argv form) so bindgen computes layout identically to the C compiler.
+        triple = "riscv32-unknown-elf".to_string();
+        let mabi = if isa.contains('d') {
+            "ilp32d"
+        } else if isa.contains('f') {
+            "ilp32f"
+        } else {
+            "ilp32"
+        };
+        arch_args.push(format!("-march=rv32{isa}"));
+        arch_args.push(format!("-mabi={mabi}"));
+    } else {
+        triple = target.clone();
+    }
     if target != host {
         cc_args.push("-target".to_string());
-        cc_args.push(target.clone());
+        cc_args.push(triple);
+        cc_args.extend(arch_args);
     }
 
     // Bindgen invokes clang with `-target xtensa-esp32s3-espidf` and that
@@ -172,8 +209,25 @@ fn main() {
         }
     }
 
+    if demo_widgets {
+        cc_args.push(format!(
+            "-I{}",
+            lvgl_root.join("demos").join("widgets").display()
+        ));
+    }
+
+    // bindgen runs against the host libclang, which has no idea where a
+    // cross toolchain keeps newlib headers (inttypes.h, stdint.h, ...).
+    // LVGL_SYSROOT points at the target sysroot (e.g. the riscv32-esp-elf
+    // one printed by `riscv32-esp-elf-gcc -print-sysroot`).
+    if let Ok(sysroot) = env::var("LVGL_SYSROOT") {
+        if !sysroot.is_empty() {
+            cc_args.push(format!("-I{}", Path::new(&sysroot).join("include").display()));
+        }
+    }
+
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
-    let bindings = bindgen::Builder::default()
+    let mut bindings_builder = bindgen::Builder::default()
         .header(shims_dir.join("lvgl_sys.h").to_str().unwrap())
         .generate_comments(false)
         .derive_default(true)
@@ -189,7 +243,14 @@ fn main() {
         // Built-in fonts are extern `lv_font_t` variables (lowercase), e.g.
         // lv_font_montserrat_14; expose the ones enabled in lv_conf.h.
         .allowlist_var("lv_font_.*")
-        .blocklist_function("lv_log_add") // varargs (va_list); not safely bindable on all targets
+        .blocklist_function("lv_log_add"); // varargs (va_list); not safely bindable on all targets
+    // The public lvgl.h tree doesn't declare demo entry points; parse the
+    // demo header too so lv_demo_widgets() lands in the bindings.
+    if demo_widgets {
+        bindings_builder =
+            bindings_builder.header(lvgl_root.join("demos/widgets/lv_demo_widgets.h").to_str().unwrap());
+    }
+    let bindings = bindings_builder
         .generate()
         .expect("Unable to generate LVGL 9.6 bindings");
 

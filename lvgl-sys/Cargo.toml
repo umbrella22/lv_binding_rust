@@ -39,6 +39,10 @@ use-vendored-config = []
 # (src/drivers/sdl, LV_USE_SDL=1). Requires SDL2 on the host; default
 # builds (e.g. ESP cross-compiles) are unaffected.
 sdl = []
+# Compile the vendored official widgets demo (vendor/lvgl-9.6/demos/widgets)
+# and expose lv_demo_widgets(). Needs the fonts/widgets the demo uses
+# enabled in the vendored lv_conf.h.
+lv-demo-widgets = []
 # Legacy lv_drivers (SDL/Linux) backends -- not used on ESP-IDF v6 path
 # (esp_lvgl_port supplies flush). Kept as a no-op feature for Cargo.toml
 # back-compat with existing dependents.
