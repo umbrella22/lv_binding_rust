@@ -139,6 +139,3 @@ is missing a feature you want to make use, please send a Pull Request or open an
 Here's a list of known issues that can be faced when using this repo:
 
 - [Enum alignment issues](https://github.com/lvgl/lv_binding_rust/issues/163)
-
-
-[![SWUbanner](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner2-direct.svg)](https://github.com/vshymanskyy/StandWithUkraine/blob/main/docs/README.md)
