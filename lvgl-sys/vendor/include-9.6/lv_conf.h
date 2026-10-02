@@ -34,7 +34,7 @@
  *  - LV_STDLIB_RTTHREAD
  *  - LV_STDLIB_CUSTOM: Custom (implemented externally)
  */
-#define LV_USE_STDLIB_MALLOC LV_STDLIB_BUILTIN
+#define LV_USE_STDLIB_MALLOC LV_STDLIB_CLIB
 
 /** String functions source
  *  Possible values:
