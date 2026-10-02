@@ -97,7 +97,7 @@ impl From<Color> for Rgb888 {
 #[cfg(feature = "embedded_graphics")]
 impl From<Color> for Rgb565 {
     fn from(color: Color) -> Self {
-        Rgb565::new(color.r(), color.g(), color.b())
+        Rgb565::from(Rgb888::from(color))
     }
 }
 
@@ -328,5 +328,17 @@ mod test {
         assert_eq!(color.r(), 206);
         assert_eq!(color.g(), 51);
         assert_eq!(color.b(), 255);
+    }
+}
+
+#[cfg(all(test, feature = "embedded_graphics"))]
+mod color_conversion_tests {
+    use super::*;
+    use embedded_graphics::prelude::RgbColor;
+
+    #[test]
+    fn rgb565_conversion_scales_rgb888_channels() {
+        let color = Rgb565::from(Color::from_rgb((128, 64, 32)));
+        assert_eq!((color.r(), color.g(), color.b()), (16, 16, 4));
     }
 }

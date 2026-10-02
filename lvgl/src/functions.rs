@@ -17,9 +17,6 @@ pub(crate) fn disp_get_default() -> Result<Display> {
     let disp_ptr = unsafe { lvgl_sys::lv_display_get_default() };
     Ok(Display::from_raw(
         NonNull::new(disp_ptr).ok_or(CoreError::OperationFailed)?,
-        None,
-        false,
-        None,
     ))
 }
 

@@ -240,13 +240,41 @@ impl Rusty for LvFunc {
 
         // Append a semicolon at the end of the unsafe code only if there's no return value.
         // Otherwise we should remove it
-        let optional_semicolon= match self.ret {
+        let optional_semicolon = match self.ret {
             None => quote!(;),
-            _ => quote!()
+            _ => quote!(),
+        };
+
+        // Raw pointer arguments are not validated by this wrapper. Unlike a
+        // pointer returned to the caller, an input/output pointer can be
+        // dereferenced or retained by C as soon as the method is called.
+        let requires_unsafe = self
+            .args
+            .iter()
+            .skip(1)
+            .any(|arg| arg.typ.pointer_target().is_some() && !arg.typ.is_str());
+        let (unsafety, safety_docs) = if requires_unsafe {
+            let contract = format!(
+                concat!(
+                    "The caller must uphold the pointer contracts of `{}`: pointers must be ",
+                    "valid and correctly aligned for every access, output memory must be writable, ",
+                    "and buffers must cover the lengths passed to C. Null is allowed only where ",
+                    "that LVGL API permits it. Any data retained by LVGL must remain valid until ",
+                    "LVGL stops using it, not merely until this call returns.",
+                ),
+                self.name,
+            );
+            (
+                quote!(unsafe),
+                quote!(#[doc = "# Safety"] #[doc = #contract]),
+            )
+        } else {
+            (quote!(), quote!())
         };
 
         Ok(quote! {
-            pub fn #func_name(#args_decl) -> #return_type {
+            #safety_docs
+            pub #unsafety fn #func_name(#args_decl) -> #return_type {
                 #args_processing
                 unsafe {
                     lvgl_sys::#original_func_name(#ffi_args)#optional_semicolon
@@ -708,6 +736,62 @@ mod test {
         };
 
         assert_eq!(code.to_string(), expected_code.to_string());
+    }
+
+    #[test]
+    fn raw_pointer_arguments_require_unsafe_but_pointer_returns_do_not() {
+        for (declaration, expected_unsafe) in [
+            (
+                quote!(
+                    fn lv_label_get_letter_pos(label: *mut lv_obj_t, id: u32, pos: *mut lv_point_t);
+                ),
+                true,
+            ),
+            (
+                quote!(
+                    fn lv_label_set_points(
+                        label: *mut lv_obj_t,
+                        points: *const lv_point_t,
+                        count: u32,
+                    );
+                ),
+                true,
+            ),
+            (
+                quote!(
+                    fn lv_label_write_text(label: *mut lv_obj_t, text: *mut cty::c_char);
+                ),
+                true,
+            ),
+            (
+                quote!(
+                    fn lv_label_get_points(label: *const lv_obj_t) -> *const lv_point_t;
+                ),
+                false,
+            ),
+            (
+                quote!(
+                    fn lv_label_set_text(label: *mut lv_obj_t, text: *const cty::c_char);
+                ),
+                false,
+            ),
+        ] {
+            let definitions =
+                CodeGen::load_func_defs(&quote!(extern "C" { pub #declaration }).to_string())
+                    .unwrap();
+            let widget = LvWidget {
+                name: "label".into(),
+                methods: vec![],
+            };
+            let generated = definitions[0].code(&widget).unwrap();
+            let method: syn::ImplItemFn = syn::parse2(generated.clone()).unwrap();
+            assert_eq!(
+                method.sig.unsafety.is_some(),
+                expected_unsafe,
+                "{generated}"
+            );
+            assert_eq!(generated.to_string().contains("# Safety"), expected_unsafe);
+        }
     }
 
     #[test]

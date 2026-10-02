@@ -396,7 +396,8 @@ fn discover_sdl2() -> Option<SdlFlags> {
 /// Patch the vendored lv_conf.h for SDL simulator builds: SDL backend on,
 /// C allocator (the 64 kB embedded TLSF pool cannot host desktop-size
 /// snapshot buffers), warnings to stdout. Textual patching against the
-/// pinned vendored file keeps default builds untouched.
+/// pinned vendored file keeps default builds untouched. Accept settings that
+/// already have the required value (in particular, a CLIB base allocator).
 fn patch_lv_conf_for_sdl(base: &str) -> String {
     let edits = [
         ("#define LV_USE_SDL 0", "#define LV_USE_SDL 1"),
@@ -410,8 +411,8 @@ fn patch_lv_conf_for_sdl(base: &str) -> String {
     let mut s = base.to_string();
     for (from, to) in edits {
         assert!(
-            s.contains(from),
-            "lv_conf.h no longer contains `{from}`; update patch_lv_conf_for_sdl"
+            s.contains(from) || s.contains(to),
+            "lv_conf.h contains neither `{from}` nor `{to}`; update patch_lv_conf_for_sdl"
         );
         s = s.replace(from, to);
     }

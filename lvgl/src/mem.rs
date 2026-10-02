@@ -55,6 +55,8 @@ impl<T> Box<T> {
 impl<T> Drop for Box<T> {
     fn drop(&mut self) {
         unsafe {
+            // Drop the owned value before releasing its LVGL allocation.
+            core::ptr::drop_in_place(self.0.as_ptr());
             lvgl_sys::lv_free(self.0.as_ptr() as *mut cty::c_void);
         }
     }
@@ -100,6 +102,21 @@ mod test {
     use crate::mem::mem_info;
     use crate::*;
     use std::vec::Vec;
+
+    #[test]
+    fn dropping_box_runs_value_destructor() {
+        use core::cell::Cell;
+        struct Dropped<'a>(&'a Cell<usize>);
+        impl Drop for Dropped<'_> {
+            fn drop(&mut self) {
+                self.0.set(self.0.get() + 1);
+            }
+        }
+        tests::initialize_test(false);
+        let drops = Cell::new(0);
+        drop(Box::new(Dropped(&drops)));
+        assert_eq!(drops.get(), 1);
+    }
 
     #[test]
     fn place_value_in_lv_mem() {

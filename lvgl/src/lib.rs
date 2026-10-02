@@ -12,6 +12,17 @@
 //! [1]: https://docs.lvgl.io/8.3/get-started/index.html
 //!
 
+//! # Generated pointer APIs
+//!
+//! Methods that pass raw pointers to LVGL require an `unsafe` call. Their
+//! callers must satisfy the corresponding C API's memory and lifetime rules.
+//!
+//! ```compile_fail,E0133
+//! fn invalid_safe_call(label: &mut lvgl::widgets::Label<'_>) {
+//!     label.get_letter_pos(0, core::ptr::null_mut());
+//! }
+//! ```
+//!
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(feature = "nightly", feature(cfg_accessible))]
 #![cfg_attr(feature = "nightly", feature(error_in_core))]
@@ -95,8 +106,12 @@ pub fn init() {
 ///
 /// # Safety
 ///
+/// All rendering, asynchronous draw workers, GPU/DMA work and pending flushes
+/// must finish first; no LVGL callback may be in progress. Destructors and
+/// deletion callbacks must not reenter LVGL to use objects being torn down,
+/// refresh displays, or recursively delete displays or call `deinit`.
 /// After calling, ensure existing LVGL-related values are not accessed even if
-/// LVGL is reinitialized.
+/// LVGL is reinitialized, including through their destructors.
 #[cfg(not(feature = "custom_allocator"))]
 pub unsafe fn deinit() {
     unsafe {
